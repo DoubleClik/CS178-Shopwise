@@ -1,5 +1,6 @@
 // walmartClient.mjs — Affiliates v2 with inline private key (temporary)
 import crypto from 'crypto';
+import fs from "fs";
 
 // WARNING: Inline key is OK for a quick test, but move it to a .pem asap.
 const keyData = {
@@ -86,9 +87,44 @@ export async function getStoresByZip(zipCode) {
     method: 'GET',
     headers: generateWalmartHeaders(),
   });
+
   const text = await res.text();
   if (!res.ok) throw new Error(`Stores HTTP ${res.status}: ${text}`);
   return JSON.parse(text); // { stores: [...] }
+}
+
+export async function getProductCatalog(category, count) {
+  const url = new URL(
+    'https://developer.api.walmart.com/api-proxy/service/affil/product/v2/paginated/items',
+  );
+  url.searchParams.set('category', category);
+  url.searchParams.set('count', count);
+
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: generateWalmartHeaders(),
+  });
+
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Stores HTTP ${res.status}: ${text}`);
+  return JSON.parse(text);
+}
+
+//One-time use to generate taxonomy.json
+export async function getTaxonomyID() {
+  const url = new URL(
+    'https://developer.api.walmart.com/api-proxy/service/affil/product/v2/taxonomy',
+  );
+
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: generateWalmartHeaders(),
+  });
+
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Stores HTTP ${res.status}: ${text}`);
+  fs.writeFileSync("./walmart_API_Taxonomy/taxonomy.json", JSON.stringify(text, null, 2));
+  return JSON.parse(text);
 }
 
 // // v2: Product lookup by UPC + ZIP (price & availability)
