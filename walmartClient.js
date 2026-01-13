@@ -2,7 +2,7 @@
 import crypto from 'crypto';
 import fs from "fs";
 
-// WARNING: Inline key is OK for a quick test, but move it to a .pem asap.
+// WARNING / FIXME: Inline key is OK for a quick test, but move it to a .pem asap.
 const keyData = {
   consumerId: '39d025f8-e575-48cf-aa4e-22f89da4c16f',
   keyVer: '5', // keep as STRING; must match walmart.io key version exactly
@@ -44,7 +44,6 @@ function canonicalizeForSignature({ consumerId, ts, keyVer }) {
     'WM_SEC.KEY_VERSION': String(keyVer).trim(),
   };
   const sortedKeys = Object.keys(map).sort(); // lexicographic
-  // join values with '\n' and ADD a trailing '\n' (Java example does this)
   return sortedKeys.map((k) => map[k]).join('\n') + '\n';
 }
 
@@ -61,16 +60,16 @@ export function generateWalmartHeaders() {
 
   const signature = crypto
     .sign('RSA-SHA256', Buffer.from(toSign, 'utf8'), {
-      key: keyData.privateKeyPem, // your PEM private key
+      key: keyData.privateKeyPem, // PEM private key
       padding: crypto.constants.RSA_PKCS1_PADDING, // PKCS#1 v1.5
-      // passphrase: "...",                        // if your PEM is encrypted
+      // passphrase: "...",                        // if PEM is encrypted
     })
     .toString('base64');
 
   return {
     'WM_CONSUMER.ID': id,
-    'WM_CONSUMER.INTIMESTAMP': ts, // Java example uses this one
-    'WM_SEC.TIMESTAMP': ts, // include too (v2 pages show this)
+    'WM_CONSUMER.INTIMESTAMP': ts,
+    'WM_SEC.TIMESTAMP': ts,
     'WM_SEC.KEY_VERSION': kv,
     'WM_SEC.AUTH_SIGNATURE': signature,
     Accept: 'application/json',
@@ -107,6 +106,7 @@ export async function getProductCatalog(category, count) {
 
   const text = await res.text();
   if (!res.ok) throw new Error(`Stores HTTP ${res.status}: ${text}`);
+  fs.writeFileSync(`./walmart_API_Products/${category}.json`, JSON.stringify(text, null, 2));
   return JSON.parse(text);
 }
 
@@ -126,30 +126,3 @@ export async function getTaxonomyID() {
   fs.writeFileSync("./walmart_API_Taxonomy/taxonomy.json", JSON.stringify(text, null, 2));
   return JSON.parse(text);
 }
-
-// // v2: Product lookup by UPC + ZIP (price & availability)
-// export async function getProductByUpcAtZip(upc, zipCode) {
-//   const url = new URL("https://developer.api.walmart.com/api-proxy/service/affil/product/v2/items");
-//   url.searchParams.set("upc", upc);
-//   url.searchParams.set("zipCode", zipCode);
-
-//   const res = await fetch(url, { method: "GET", headers: generateWalmartHeaders() });
-//   const text = await res.text();
-//   if (!res.ok) throw new Error(`Items HTTP ${res.status}: ${text}`);
-//   return JSON.parse(text);
-// }
-
-// // v2: Product lookup by itemId (optional zipCode)
-// export async function getProductByItemId(itemId, zipCode) {
-//   const url = new URL("https://developer.api.walmart.com/api-proxy/service/affil/product/v2/items");
-//   url.searchParams.set("itemId", itemId);
-//   if (zipCode) url.searchParams.set("zipCode", zipCode);
-
-//   const res = await fetch(url, { method: "GET", headers: generateWalmartHeaders() });
-//   const text = await res.text();
-//   if (!res.ok) throw new Error(`Items HTTP ${res.status}: ${text}`);
-//   return JSON.parse(text);
-// }
-
-// // Back-compat alias
-// export const getProductById = getProductByItemId;
