@@ -96,7 +96,7 @@ export async function getProductCatalog(category) {
   const url = new URL(
     'https://developer.api.walmart.com/api-proxy/service/affil/product/v2/paginated/items',
   );
-  url.searchParams.set('category', category);
+  // url.searchParams.set('category', category);
 
   const res = await fetch(url, {
     method: 'GET',
@@ -105,7 +105,11 @@ export async function getProductCatalog(category) {
 
   const text = await res.text();
   if (!res.ok) throw new Error(`Stores HTTP ${res.status}: ${text}`);
-  fs.writeFileSync(`./walmart_API_Products/${category}.json`, JSON.stringify(text, null, 2));
+  if (category === '') {
+    fs.writeFileSync(`./walmart_API_Products/all.json`, JSON.stringify(text, null, 2));
+  } else {
+    fs.writeFileSync(`./walmart_API_Products/${category}.json`, JSON.stringify(text, null, 2));
+  }
   return JSON.parse(text);
 }
 
