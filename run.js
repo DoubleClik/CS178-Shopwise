@@ -11,8 +11,7 @@ try {
     console.table(data);
   } else if (cmd === 'lookup') {
     const category = arg1 || '';
-    const count = arg2 || 2;
-    const data = await getProductCatalog(category, count);
+    const data = await getProductCatalog(category);
     console.log(data);
   } else if (cmd === 'taxonomy') {
     const category = arg1 || '';

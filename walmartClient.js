@@ -92,12 +92,11 @@ export async function getStoresByZip(zipCode) {
   return JSON.parse(text); // { stores: [...] }
 }
 
-export async function getProductCatalog(category, count) {
+export async function getProductCatalog(category) {
   const url = new URL(
     'https://developer.api.walmart.com/api-proxy/service/affil/product/v2/paginated/items',
   );
   url.searchParams.set('category', category);
-  url.searchParams.set('count', count);
 
   const res = await fetch(url, {
     method: 'GET',
