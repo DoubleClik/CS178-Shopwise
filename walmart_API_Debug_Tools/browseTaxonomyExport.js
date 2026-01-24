@@ -1,37 +1,39 @@
-import fs from "fs";
-import readline from "readline";
+import fs from 'fs';
+import readline from 'readline';
 
 /* ---------- UX helpers ---------- */
-const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 
 /* ---------- Load taxonomy ---------- */
 function loadTaxonomy(filepath) {
-  const text = fs.readFileSync(filepath, "utf8");
+  const text = fs.readFileSync(filepath, 'utf8');
   let data = JSON.parse(text);
-  if (typeof data === "string") data = JSON.parse(data); // double-encoded
+  if (typeof data === 'string') data = JSON.parse(data); // double-encoded
   return data;
 }
 
 function escapeCSV(v) {
-  const s = String(v ?? "");
+  const s = String(v ?? '');
   return `"${s.replaceAll('"', '""')}"`;
 }
 
 function sanitizeFilename(s) {
-  return String(s ?? "export")
-    .trim()
-    .replaceAll(/[^\w\-]+/g, "_")
-    .replaceAll(/_+/g, "_")
-    .replaceAll(/^_+|_+$/g, "")
-    .slice(0, 80) || "export";
+  return (
+    String(s ?? 'export')
+      .trim()
+      .replaceAll(/[^\w\-]+/g, '_')
+      .replaceAll(/_+/g, '_')
+      .replaceAll(/^_+|_+$/g, '')
+      .slice(0, 80) || 'export'
+  );
 }
 
 /* ---------- Tree utilities ---------- */
 function walkCollect(node, out) {
   out.push({
-    id: node.id ?? "",
-    name: node.name ?? "",
-    path: node.path ?? node.name ?? "",
+    id: node.id ?? '',
+    name: node.name ?? '',
+    path: node.path ?? node.name ?? '',
   });
   for (const child of node.children ?? []) walkCollect(child, out);
 }
@@ -42,12 +44,12 @@ function exportSubtreeToCSV(node, filename) {
 
   rows.sort((a, b) => a.path.localeCompare(b.path));
 
-  const header = "id,name,path\n";
+  const header = 'id,name,path\n';
   const body = rows
-    .map(r => `${escapeCSV(r.id)},${escapeCSV(r.name)},${escapeCSV(r.path)}`)
-    .join("\n");
+    .map((r) => `${escapeCSV(r.id)},${escapeCSV(r.name)},${escapeCSV(r.path)}`)
+    .join('\n');
 
-  fs.writeFileSync(filename, header + body + "\n", "utf8");
+  fs.writeFileSync(filename, header + body + '\n', 'utf8');
 }
 
 /* ---------- Index ---------- */
@@ -57,7 +59,7 @@ function buildIndex(roots) {
 
   function index(node) {
     byId.set(String(node.id), node);
-    const key = String(node.name ?? "").toLowerCase();
+    const key = String(node.name ?? '').toLowerCase();
     if (key) {
       if (!byName.has(key)) byName.set(key, []);
       byName.get(key).push(node);
@@ -71,7 +73,7 @@ function buildIndex(roots) {
 
 /* ---------- Printing ---------- */
 async function printTopLevel(roots) {
-  console.log("\nTop-level categories:");
+  console.log('\nTop-level categories:');
   await sleep(400);
   roots.forEach((r, i) => {
     console.log(`  ${i + 1}. ${r.name}  [id=${r.id}]`);
@@ -81,10 +83,10 @@ async function printTopLevel(roots) {
 async function printChildren(node) {
   const children = node.children ?? [];
   if (!children.length) {
-    console.log("(No children under this node.)");
+    console.log('(No children under this node.)');
     return;
   }
-  console.log("\nChildren:");
+  console.log('\nChildren:');
   await sleep(400);
   children.forEach((c, i) => {
     console.log(`  ${i + 1}. ${c.name}  [id=${c.id}]`);
@@ -93,14 +95,16 @@ async function printChildren(node) {
 
 /* ---------- Main ---------- */
 async function main() {
-  console.log("Loading taxonomy...");
+  console.log('Loading taxonomy...');
   await sleep(500);
 
-  const taxonomy = loadTaxonomy("./taxonomy.json");
-  const roots = Array.isArray(taxonomy) ? taxonomy : taxonomy.categories ?? [];
+  const taxonomy = loadTaxonomy('./taxonomy.json');
+  const roots = Array.isArray(taxonomy)
+    ? taxonomy
+    : (taxonomy.categories ?? []);
 
   if (!roots.length) {
-    console.error("No root categories found.");
+    console.error('No root categories found.');
     process.exit(1);
   }
 
@@ -113,16 +117,16 @@ async function main() {
     input: process.stdin,
     output: process.stdout,
   });
-  const ask = (q) => new Promise(res => rl.question(q, res));
+  const ask = (q) => new Promise((res) => rl.question(q, res));
 
-  const virtualRoot = { id: "__ROOT__", name: "ROOT", children: roots };
+  const virtualRoot = { id: '__ROOT__', name: 'ROOT', children: roots };
   const stack = [virtualRoot];
 
   let exportsDone = 0;
   const maxExports = 2;
 
-  console.log("\nTaxonomy Browser + CSV Export");
-  console.log("Navigate, export subtrees, or quit.");
+  console.log('\nTaxonomy Browser + CSV Export');
+  console.log('Navigate, export subtrees, or quit.');
   await sleep(800);
 
   while (true) {
@@ -137,50 +141,50 @@ async function main() {
     }
 
     await sleep(300);
-    console.log("\nOptions:");
-    console.log("  [s] Select / search category");
-    console.log("  [e] Export this subtree to CSV");
-    console.log("  [u] Go up one level");
-    console.log("  [q] Quit");
+    console.log('\nOptions:');
+    console.log('  [s] Select / search category');
+    console.log('  [e] Export this subtree to CSV');
+    console.log('  [u] Go up one level');
+    console.log('  [q] Quit');
 
-    const choice = (await ask("\nChoice: ")).trim().toLowerCase();
+    const choice = (await ask('\nChoice: ')).trim().toLowerCase();
 
-    if (choice === "q") {
-      console.log("\nExiting...");
+    if (choice === 'q') {
+      console.log('\nExiting...');
       await sleep(500);
       rl.close();
       return;
     }
 
-    if (choice === "u") {
+    if (choice === 'u') {
       if (stack.length > 1) {
         stack.pop();
-        console.log("Moved up one level.");
+        console.log('Moved up one level.');
       } else {
-        console.log("Already at top level.");
+        console.log('Already at top level.');
       }
       await sleep(600);
       continue;
     }
 
-    if (choice === "e") {
+    if (choice === 'e') {
       if (exportsDone >= maxExports) {
-        console.log("Export limit reached.");
+        console.log('Export limit reached.');
         await sleep(600);
         continue;
       }
 
       const base = sanitizeFilename(
-        current === virtualRoot ? "top_level" : current.name
+        current === virtualRoot ? 'top_level' : current.name,
       );
       const file = `${base}_subtree.csv`;
 
       const exportNode =
         current === virtualRoot
-          ? { name: "Top Level", children: roots }
+          ? { name: 'Top Level', children: roots }
           : current;
 
-      console.log("Exporting subtree...");
+      console.log('Exporting subtree...');
       await sleep(500);
 
       exportSubtreeToCSV(exportNode, file);
@@ -192,17 +196,17 @@ async function main() {
       continue;
     }
 
-    if (choice === "s") {
+    if (choice === 's') {
       const children = current.children ?? [];
       if (!children.length) {
-        console.log("No children to select here.");
+        console.log('No children to select here.');
         await sleep(600);
         continue;
       }
 
-      const input = (await ask(
-        "Enter child NUMBER, or NAME/ID (direct child only): "
-      )).trim();
+      const input = (
+        await ask('Enter child NUMBER, or NAME/ID (direct child only): ')
+      ).trim();
 
       const num = Number(input);
       if (Number.isInteger(num) && num >= 1 && num <= children.length) {
@@ -213,7 +217,7 @@ async function main() {
         continue;
       }
 
-      const idMatch = children.find(c => String(c.id) === input);
+      const idMatch = children.find((c) => String(c.id) === input);
       if (idMatch) {
         console.log(`Selected: ${idMatch.name}`);
         await sleep(600);
@@ -222,7 +226,7 @@ async function main() {
       }
 
       const nameMatch = children.find(
-        c => String(c.name).toLowerCase() === input.toLowerCase()
+        (c) => String(c.name).toLowerCase() === input.toLowerCase(),
       );
       if (nameMatch) {
         console.log(`Selected: ${nameMatch.name}`);
@@ -231,17 +235,17 @@ async function main() {
         continue;
       }
 
-      console.log("No matching direct child found.");
+      console.log('No matching direct child found.');
       await sleep(700);
       continue;
     }
 
-    console.log("Invalid option.");
+    console.log('Invalid option.');
     await sleep(600);
   }
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
