@@ -9,12 +9,10 @@ import SwiftUI
 import SwiftData
 
 @main
-struct YourAppNameApp: App {
+struct Shopwise: App {
     var body: some Scene {
         WindowGroup {
-            NavigationStack {
-                HomeView()
-            }
+            ContentView()
         }
     }
 }
