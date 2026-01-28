@@ -132,6 +132,39 @@ struct SearchView: View {
                             }
                         }
                     }
+                    Spacer()
+                    HStack(spacing: 12) {
+                        Image("cutiesorange")
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 90, height: 90)   // <- change size here
+                            .clipped()
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Cuties Oranges")
+                                .font(.headline)
+
+                            Text("5 lb")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+
+                            HStack {
+                                Text("$5.99")
+                                    .font(.headline)
+
+                                Spacer()
+
+                                Button {
+                                    // placeholder: add to cart
+                                } label: {
+                                    Label("Add", systemImage: "cart.badge.plus")
+                                        .foregroundStyle(.white)
+                                }
+                                .buttonStyle(.borderedProminent)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -154,7 +187,7 @@ struct SearchView: View {
 struct MapView: View {
     @State private var position: MapCameraPosition = .region(
         MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 34.057, longitude: -117.821),
+            center: CLLocationCoordinate2D(latitude: 33.978194, longitude: -117.367861),
             span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
         )
     )
@@ -175,7 +208,7 @@ struct MapView: View {
                     Image(systemName: "mappin.circle.fill")
                     VStack(alignment: .leading) {
                         Text("Walmart Supercenter")
-                        Text("0.5 mi")
+                        Text("2.5 mi")
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -183,8 +216,8 @@ struct MapView: View {
                 HStack {
                     Image(systemName: "mappin.circle.fill")
                     VStack(alignment: .leading) {
-                        Text("Target")
-                        Text("1.2 mi")
+                        Text("Ralph's")
+                        Text("4.2 mi")
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
