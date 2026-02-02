@@ -23,11 +23,55 @@ struct CardContainer<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            content
-        }
-        .padding(12)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        content
+            .padding(12)
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
+
+struct ItemCardView: View {
+    let imageName: String
+    let title: String
+    let unit: String
+    let price: Double
+    let onAdd: () -> Void
+
+    var body: some View {
+        CardContainer {
+            HStack(spacing: 12) {
+                Image(imageName)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 90, height: 90)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(title)
+                        .font(.headline)
+
+                    Text(unit)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        Text(String(format: "$%.2f", price))
+                            .font(.headline)
+
+                        Spacer()
+
+                        Button {
+                            onAdd()
+                        } label: {
+                            Label("Add", systemImage: "cart.badge.plus")
+                                .foregroundStyle(.white)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+            }
+        }
+    }
+}
+

@@ -75,6 +75,8 @@ struct SettingsView: View {
 }
 
 struct SearchView: View {
+    @EnvironmentObject private var cartStore: CartStore
+    
     @State private var query = ""
     @State private var selectedCategory: String = "All"
 
@@ -99,75 +101,45 @@ struct SearchView: View {
 
             // Big product card placeholder (like the “milk/strawberries” card)
             Section {
-                CardContainer {
-                    HStack(spacing: 12) {
-                        Image("strawberry")
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 90, height: 90)   // <- change size here
-                            .clipped()
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Organic Strawberries")
-                                .font(.headline)
-
-                            Text("1 lb")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-
-                            HStack {
-                                Text("$3.99")
-                                    .font(.headline)
-
-                                Spacer()
-
-                                Button {
-                                    // placeholder: add to cart
-                                } label: {
-                                    Label("Add", systemImage: "cart.badge.plus")
-                                        .foregroundStyle(.white)
-                                }
-                                .buttonStyle(.borderedProminent)
-                            }
-                        }
-                    }
-                    Spacer()
-                    HStack(spacing: 12) {
-                        Image("cutiesorange")
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 90, height: 90)   // <- change size here
-                            .clipped()
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Cuties Oranges")
-                                .font(.headline)
-
-                            Text("5 lb")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-
-                            HStack {
-                                Text("$5.99")
-                                    .font(.headline)
-
-                                Spacer()
-
-                                Button {
-                                    // placeholder: add to cart
-                                } label: {
-                                    Label("Add", systemImage: "cart.badge.plus")
-                                        .foregroundStyle(.white)
-                                }
-                                .buttonStyle(.borderedProminent)
-                            }
-                        }
-                    }
+                ItemCardView(
+                    imageName: "strawberry",
+                    title: "Organic Strawberries",
+                    unit: "1 lb",
+                    price: 3.99
+                ) {
+                    cartStore.add(
+                        name: "Organic Strawberries",
+                        unit: "1 lb",
+                        price: 3.99
+                    )
+                }
+                
+                ItemCardView(
+                    imageName: "cutiesorange",
+                    title: "Cuties Oranges",
+                    unit: "5 lb",
+                    price: 5.99
+                ) {
+                    cartStore.add(
+                        name: "Cuties Oranges",
+                        unit: "5 lb",
+                        price: 5.99
+                    )
+                }
+                
+                ItemCardView(
+                    imageName: "",
+                    title: "Cuties Oranges",
+                    unit: "5 lb",
+                    price: 5.99
+                ) {
+                    cartStore.add(
+                        name: "Cuties Oranges",
+                        unit: "5 lb",
+                        price: 5.99
+                    )
                 }
             }
-
         }
         .listStyle(.plain)
         .navigationTitle("ShopWise")
@@ -191,14 +163,31 @@ struct MapView: View {
             span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
         )
     )
-
+    
+    private struct DroppedPin: Identifiable {
+        let id = UUID()
+        let coordinate: CLLocationCoordinate2D
+    }
+    @State private var droppedPins: [DroppedPin] = []
+    
     var body: some View {
         List {
             Section() {
                 CardContainer {
-                    Map(position: $position)
+                    MapReader { proxy in
+                        Map(position: $position) {
+                            ForEach(droppedPins) { pin in
+                                Marker("Selected", coordinate: pin.coordinate)
+                            }
+                        }
                         .frame(height: 260)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .onTapGesture { point in
+                            if let coord = proxy.convert(point, from: .local) {
+                                droppedPins.append(DroppedPin(coordinate: coord))
+                            }
+                        }
+                    }
                 }
                 .listRowInsets(EdgeInsets())
             }
@@ -238,18 +227,64 @@ struct MapView: View {
 
 
 struct CartView: View {
+    @EnvironmentObject private var cartStore: CartStore
+
     var body: some View {
         List {
             Section("Items") {
-                Text("Cart items will go here")
-                    .foregroundStyle(.secondary)
+                if cartStore.items.isEmpty {
+                    Text("Cart is empty")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(cartStore.items) { item in
+                        HStack(alignment: .top, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.name)
+                                    .font(.headline)
+                                Text(item.unit)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Text(String(format: "$%.2f", item.price))
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            HStack(spacing: 10) {
+                                Button {
+                                    cartStore.decrement(item)
+                                } label: {
+                                    Image(systemName: "minus.circle")
+                                }
+                                .buttonStyle(.borderless) // ✅
+
+                                Text("\(item.quantity)")
+                                    .font(.headline)
+                                    .frame(minWidth: 24)
+
+                                Button {
+                                    cartStore.increment(item)
+                                } label: {
+                                    Image(systemName: "plus.circle")
+                                }
+                                .buttonStyle(.borderless) // ✅
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .onDelete { indexSet in
+                        for idx in indexSet {
+                            cartStore.remove(cartStore.items[idx])
+                        }
+                    }
+                }
             }
 
             Section("Summary") {
                 HStack {
                     Text("Total")
                     Spacer()
-                    Text("$0.00")
+                    Text(String(format: "$%.2f", cartStore.total))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -261,6 +296,7 @@ struct CartView: View {
                     Text("Checkout")
                         .frame(maxWidth: .infinity)
                 }
+                .disabled(cartStore.items.isEmpty)
             }
         }
         .navigationTitle("Cart")
