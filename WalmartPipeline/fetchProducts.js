@@ -2,8 +2,8 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
-const CATEGORIES_DIR = 'Categories';
-const OUT_DIR = 'walmart_CSVs';
+const CATEGORIES_DIR = 'WalmartPipeline/Categories';
+const OUT_DIR = 'WalmartPipeline/walmart_CSVs';
 
 // Walmart endpoint
 const BASE = 'https://developer.api.walmart.com';
