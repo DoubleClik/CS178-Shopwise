@@ -2,8 +2,8 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
-const CATEGORIES_DIR = 'Categories';
-const OUT_DIR = 'walmart_CSVs';
+const CATEGORIES_DIR = 'WalmartPipeline/Categories';
+const OUT_DIR = 'WalmartPipeline/walmart_CSVs';
 
 // Walmart endpoint
 const BASE = 'https://developer.api.walmart.com';
@@ -11,12 +11,12 @@ const PAGINATED_PATH = '/api-proxy/service/affil/product/v2/paginated/items';
 
 // Page and Category Ping Delay
 const COUNT_PER_PAGE = 500;
-const REQUEST_DELAY_MS = 200; // between pages
-const CATEGORY_DELAY_MS = 150; // between categories
+const REQUEST_DELAY_MS = 25; // between pages
+const CATEGORY_DELAY_MS = 25; // between categories
 
 // Retry Attempt Tuning
 const FETCH_ATTEMPTS = 5;
-const RETRY_BASE_DELAY_MS = 500;
+const RETRY_BASE_DELAY_MS = 50;
 
 // Output behavior
 const EXPORT_PARENT_ROWS_TOO = false; // false = leaf-ish only
@@ -644,9 +644,11 @@ async function main() {
 
       await new Promise((resolve) => categoryStream.end(resolve));
 
-      console.log(
-        `Wrote category CSV: ${path.basename(categoryFile)} (${categoryCount} rows)`,
-      );
+      if (categoryCount != 0) {
+        console.log(
+          `Wrote category CSV: ${path.basename(categoryFile)} (${categoryCount} rows)`,
+        );
+      }
     }
 
     await new Promise((resolve) => subtreeAggStream.end(resolve));

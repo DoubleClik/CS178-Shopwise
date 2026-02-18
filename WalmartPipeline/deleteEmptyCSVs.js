@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-const TARGET_DIR = 'walmart_CSVs';
+const TARGET_DIR = 'WalmartPipeline/walmart_CSVs';
 
 /* -------------------- helpers -------------------- */
 
