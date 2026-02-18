@@ -10,20 +10,28 @@
  *   Create a .env file (or export env vars) with:
  *     KROGER_CLIENT_ID=your_client_id
  *     KROGER_CLIENT_SECRET=your_client_secret
- *     KROGER_LOCATION_ID=          ← leave blank, or use a real 8-char ID
+ *     KROGER_LOCATION_ID=          ← optional: hard-code a specific store ID
  *
- *   Register at: https://developer.kroger.com
- *   Scope needed: product.compact
+ *   Register at: https://developer.kroger.com  |  Scope needed: product.compact
  *
  * USAGE:
- *   node kroger_food_scraper.js
+ *   node kroger_food_scraper.js [flags]
  *
- *   Optional flags:
- *     --dry-run          Fetch only the first page of each category (for testing)
- *     --categories=a,b   Comma-separated list of category keys to run
- *                        (see FOOD_CATEGORIES below for valid keys)
- *     --location=xxxxx   Override store location ID (must be 8 alphanumeric chars)
- *     --out=./my-output  Output directory (default: ./kroger_output)
+ * FLAGS:
+ *   --zipcode=90210        Look up the nearest Kroger store and use its ID
+ *   --radius=15            Search radius in miles for zipcode lookup (default: 10)
+ *   --location=XXXXXXXX   Hard-code an 8-char store ID (skips zipcode lookup)
+ *   --dry-run              Fetch only the first page per term (quick test)
+ *   --categories=a,b,c    Comma-separated subset of categories to run
+ *   --out=./my-output      Output directory (default: ./kroger_output)
+ *
+ * PRIORITY: --location > --zipcode > KROGER_LOCATION_ID env var
+ *
+ * EXAMPLES:
+ *   node kroger_food_scraper.js --zipcode=30301
+ *   node kroger_food_scraper.js --zipcode=10001 --radius=20 --dry-run
+ *   node kroger_food_scraper.js --zipcode=77001 --categories=produce,dairy_eggs
+ *   node kroger_food_scraper.js --location=01400413
  */
 
 import "dotenv/config";
@@ -35,47 +43,296 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ─── Configuration ────────────────────────────────────────────────────────────
+// ─── Configuration ─────────────────────────────────────────────────────────────
 
-const BASE_URL = "https://api.kroger.com/v1";
-const TOKEN_URL = `${BASE_URL}/connect/oauth2/token`;
-const PRODUCTS_URL = `${BASE_URL}/products`;
+const BASE_URL      = "https://api.kroger.com/v1";
+const TOKEN_URL     = `${BASE_URL}/connect/oauth2/token`;
+const PRODUCTS_URL  = `${BASE_URL}/products`;
+const LOCATIONS_URL = `${BASE_URL}/locations`;
 
-const PAGE_LIMIT = 50;        // max allowed by Kroger API
-const MAX_PAGES = 20;         // 20 pages x 50 = 1,000 results per term (API ceiling)
-const REQUEST_DELAY_MS = 350; // stay comfortably under rate limits
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 2000;
+const PAGE_LIMIT       = 50;    // max results per Kroger API page
+const MAX_PAGES        = 20;    // 20 × 50 = 1,000 results per search term
+const REQUEST_DELAY_MS = 350;   // pause between requests to stay under rate limits
+const MAX_RETRIES      = 3;
+const RETRY_DELAY_MS   = 2000;
 
-// ─── CLI Args ─────────────────────────────────────────────────────────────────
+// ─── CLI Args ──────────────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
-const isDryRun = args.includes("--dry-run");
-const outDir = (args.find((a) => a.startsWith("--out=")) || "").replace("--out=", "") || "./kroger_output";
-const locationArgRaw = (args.find((a) => a.startsWith("--location=")) || "").replace("--location=", "") || "";
-const categoryFilter = (args.find((a) => a.startsWith("--categories=")) || "").replace("--categories=", "");
 
-/**
- * Validates that a location ID is exactly 8 alphanumeric characters.
- * Silently returns "" for empty input.
- * Warns and returns "" if a non-empty but invalid value is provided
- * (e.g. the unfilled .env placeholder "optional_store_location_id").
- */
+function getArg(prefix) {
+  return (args.find((a) => a.startsWith(prefix)) ?? "").replace(prefix, "") || "";
+}
+
+const isDryRun        = args.includes("--dry-run");
+const outDir          = getArg("--out=")        || "./kroger_output";
+const locationArgRaw  = getArg("--location=");
+const zipcodeArg      = getArg("--zipcode=");
+const radiusArg       = parseInt(getArg("--radius=") || "10", 10);
+const categoryFilter  = getArg("--categories=");
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Validates an 8-char alphanumeric Kroger location ID. Returns "" if invalid. */
 function validateLocationId(id) {
   if (!id) return "";
   if (/^[a-zA-Z0-9]{8}$/.test(id)) return id;
   console.warn(
-    `\n  Location ID "${id}" is not a valid 8-character alphanumeric ID.` +
-    `\n  Ignoring it — products will still be fetched without pricing/stock data.` +
-    `\n  To use pricing: find a real ID with:` +
-    `\n    curl -H "Authorization: Bearer <token>" \\` +
-    `\n      "https://api.kroger.com/v1/locations?filter.zipCode=YOUR_ZIP&filter.limit=1"` +
-    `\n  then set KROGER_LOCATION_ID=<8charId> in your .env (or leave it blank).\n`
+    `\n  WARNING: Location ID "${id}" is not a valid 8-character alphanumeric ID — ignoring it.\n`
   );
   return "";
 }
 
-// ─── Food Categories ──────────────────────────────────────────────────────────
+/** Validates a 5-digit US zip code. */
+function validateZipCode(zip) {
+  if (!zip) return "";
+  if (/^\d{5}$/.test(zip)) return zip;
+  console.error(`\n  ERROR: "${zip}" is not a valid 5-digit US zip code.\n`);
+  process.exit(1);
+}
+
+// ─── Token Manager ─────────────────────────────────────────────────────────────
+
+class TokenManager {
+  constructor(clientId, clientSecret) {
+    if (!clientId || !clientSecret) {
+      throw new Error(
+        "Missing KROGER_CLIENT_ID or KROGER_CLIENT_SECRET.\n" +
+        "Set them in a .env file or as environment variables."
+      );
+    }
+    this.credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    this.accessToken = null;
+    this.expiresAt   = 0;
+  }
+
+  async getToken() {
+    if (this.accessToken && Date.now() < this.expiresAt - 60_000) {
+      return this.accessToken;
+    }
+    console.log("  Fetching new OAuth2 token...");
+    const res = await fetch(TOKEN_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Basic ${this.credentials}`,
+      },
+      body: "grant_type=client_credentials&scope=product.compact",
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Token request failed (${res.status}): ${body}`);
+    }
+    const data = await res.json();
+    this.accessToken = data.access_token;
+    this.expiresAt   = Date.now() + data.expires_in * 1000;
+    console.log(`  Token valid for ${Math.round(data.expires_in / 60)} minutes`);
+    return this.accessToken;
+  }
+}
+
+// ─── Location Lookup ───────────────────────────────────────────────────────────
+
+/**
+ * Given a zip code, calls GET /v1/locations to find nearby Kroger-family stores,
+ * prints a numbered list, and returns the locationId of the first result.
+ *
+ * The function prefers stores whose chain name includes "KROGER", but will fall
+ * back to any store in the results if no Kroger-branded store is found.
+ *
+ * @param {string} zipCode   - 5-digit US zip code
+ * @param {number} radius    - search radius in miles (default 10)
+ * @param {TokenManager} tokenMgr
+ * @returns {Promise<string>} - 8-char locationId
+ */
+async function resolveLocationFromZip(zipCode, radius, tokenMgr) {
+  console.log(`\n  Looking up stores near zip code ${zipCode} (radius: ${radius} miles)...`);
+
+  const token = await tokenMgr.getToken();
+  const params = new URLSearchParams({
+    "filter.zipCode.near": zipCode,
+    "filter.radiusInMiles": radius,
+    "filter.limit": 10,
+  });
+
+  const res = await fetch(`${LOCATIONS_URL}?${params}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Location lookup failed (${res.status}): ${body}`);
+  }
+
+  const data = await res.json();
+  const stores = data?.data ?? [];
+
+  if (stores.length === 0) {
+    throw new Error(
+      `No stores found within ${radius} miles of zip code ${zipCode}.\n` +
+      `  Try increasing the radius with --radius=25`
+    );
+  }
+
+  // Print all found stores so the user knows what was found
+  console.log(`\n  Found ${stores.length} store(s) near ${zipCode}:\n`);
+  stores.forEach((s, i) => {
+    const addr = s.address ?? {};
+    console.log(
+      `    ${String(i + 1).padStart(2)}. [${s.locationId}] ${s.name} (${s.chain})\n` +
+      `        ${addr.addressLine1}, ${addr.city}, ${addr.state} ${addr.zipCode}`
+    );
+  });
+
+  // Pick the first Kroger-branded store, or fall back to the closest (index 0)
+  const preferred = stores.find((s) => /kroger/i.test(s.chain)) ?? stores[0];
+  const addr = preferred.address ?? {};
+  console.log(
+    `\n  Using: [${preferred.locationId}] ${preferred.name}\n` +
+    `         ${addr.addressLine1}, ${addr.city}, ${addr.state} ${addr.zipCode}\n` +
+    `  (Pass --location=${preferred.locationId} to use this store without a lookup next time)\n`
+  );
+
+  return preferred.locationId;
+}
+
+// ─── API Fetch Helpers ─────────────────────────────────────────────────────────
+
+async function fetchWithRetry(url, headers, retries = MAX_RETRIES) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const res = await fetch(url, { headers });
+
+    if (res.status === 429) {
+      const wait = RETRY_DELAY_MS * attempt;
+      console.warn(`    Rate limited (429). Waiting ${wait / 1000}s (retry ${attempt}/${retries})...`);
+      await sleep(wait);
+      continue;
+    }
+    if (res.status === 401) {
+      throw Object.assign(new Error("Unauthorized (401)"), { code: "UNAUTHORIZED" });
+    }
+    if (!res.ok) {
+      const body = await res.text();
+      if (attempt < retries) {
+        console.warn(`    HTTP ${res.status} on attempt ${attempt}. Retrying...`);
+        await sleep(RETRY_DELAY_MS);
+        continue;
+      }
+      throw new Error(`Request failed (${res.status}): ${body}`);
+    }
+    return res.json();
+  }
+  throw new Error(`Failed after ${retries} retries: ${url}`);
+}
+
+async function fetchProductsForTerm(term, locationId, tokenMgr, dryRun) {
+  const products   = [];
+  const totalPages = dryRun ? 1 : MAX_PAGES;
+
+  for (let page = 0; page < totalPages; page++) {
+    const params = new URLSearchParams({
+      "filter.term":  term,
+      "filter.limit": PAGE_LIMIT,
+      "filter.start": page * PAGE_LIMIT + 1,
+    });
+    if (locationId) params.set("filter.locationId", locationId);
+
+    let token = await tokenMgr.getToken();
+    let data;
+
+    try {
+      data = await fetchWithRetry(`${PRODUCTS_URL}?${params}`, {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      });
+    } catch (err) {
+      if (err.code === "UNAUTHORIZED") {
+        tokenMgr.expiresAt = 0;
+        token = await tokenMgr.getToken();
+        data = await fetchWithRetry(`${PRODUCTS_URL}?${params}`, {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        });
+      } else {
+        throw err;
+      }
+    }
+
+    const items = data?.data ?? [];
+    products.push(...items);
+    if (items.length < PAGE_LIMIT) break;
+    await sleep(REQUEST_DELAY_MS);
+  }
+
+  return products;
+}
+
+// ─── CSV Utilities ─────────────────────────────────────────────────────────────
+
+function csvEscape(value) {
+  if (value === null || value === undefined) return "";
+  const str = String(value);
+  if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+const CSV_HEADERS = [
+  "productId", "upc", "aisleLocations", "brand", "categories",
+  "countryOrigin", "description", "images", "itemsFacets", "temperature",
+  "soldInStore", "priceRegular", "pricePromo", "priceSaleEndDate",
+  "size", "soldBy", "stock",
+  "fulfillment_inStore", "fulfillment_shipToHome", "fulfillment_delivery",
+];
+
+function productToRow(p) {
+  const items       = p.items?.[0] ?? {};
+  const price       = items.price ?? {};
+  const fulfillment = items.fulfillment ?? {};
+
+  return [
+    p.productId,
+    p.upc,
+    (p.aisleLocations ?? []).map((a) => a.description).join("; "),
+    p.brand,
+    (p.categories ?? []).join("; "),
+    p.countryOrigin,
+    p.description,
+    (p.images ?? [])
+      .filter((img) => img.perspective === "front" && img.featured)
+      .map((img) => {
+        const large = (img.sizes ?? []).find((s) => s.id === "large");
+        return large?.url ?? img.sizes?.[0]?.url ?? "";
+      })
+      .join("; "),
+    (p.itemsFacets ?? []).join("; "),
+    items.temperature?.indicator,
+    items.soldInStore,
+    price.regular,
+    price.promo,
+    price.saleEndDate,
+    items.size,
+    items.soldBy,
+    items.inventory?.stockLevel,
+    fulfillment.inStore,
+    fulfillment.shipToHome,
+    fulfillment.delivery,
+  ].map(csvEscape).join(",");
+}
+
+function writeCsv(filePath, rows) {
+  fs.writeFileSync(filePath, [CSV_HEADERS.join(","), ...rows].join("\n"), "utf8");
+}
+
+// ─── Food Categories ───────────────────────────────────────────────────────────
 
 const FOOD_CATEGORIES = {
   produce: [
@@ -152,229 +409,43 @@ const FOOD_CATEGORIES = {
   ],
 };
 
-// ─── Token Manager ────────────────────────────────────────────────────────────
-
-class TokenManager {
-  constructor(clientId, clientSecret) {
-    if (!clientId || !clientSecret) {
-      throw new Error(
-        "Missing KROGER_CLIENT_ID or KROGER_CLIENT_SECRET.\n" +
-        "Set them in a .env file or as environment variables."
-      );
-    }
-    this.credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-    this.accessToken = null;
-    this.expiresAt = 0;
-  }
-
-  async getToken() {
-    if (this.accessToken && Date.now() < this.expiresAt - 60_000) {
-      return this.accessToken;
-    }
-
-    console.log("  Fetching new OAuth2 token...");
-    const res = await fetch(TOKEN_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Basic ${this.credentials}`,
-      },
-      body: "grant_type=client_credentials&scope=product.compact",
-    });
-
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Token request failed (${res.status}): ${body}`);
-    }
-
-    const data = await res.json();
-    this.accessToken = data.access_token;
-    this.expiresAt = Date.now() + data.expires_in * 1000;
-    console.log(`  Token valid for ${Math.round(data.expires_in / 60)} minutes`);
-    return this.accessToken;
-  }
-}
-
-// ─── API Helpers ──────────────────────────────────────────────────────────────
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function fetchWithRetry(url, headers, retries = MAX_RETRIES) {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    const res = await fetch(url, { headers });
-
-    if (res.status === 429) {
-      const wait = RETRY_DELAY_MS * attempt;
-      console.warn(`    Rate limited (429). Waiting ${wait / 1000}s before retry ${attempt}/${retries}...`);
-      await sleep(wait);
-      continue;
-    }
-
-    if (res.status === 401) {
-      throw Object.assign(new Error("Unauthorized (401)"), { code: "UNAUTHORIZED" });
-    }
-
-    if (!res.ok) {
-      const body = await res.text();
-      if (attempt < retries) {
-        console.warn(`    HTTP ${res.status} on attempt ${attempt}. Retrying...`);
-        await sleep(RETRY_DELAY_MS);
-        continue;
-      }
-      throw new Error(`Request failed (${res.status}): ${body}`);
-    }
-
-    return res.json();
-  }
-  throw new Error(`Failed after ${retries} retries: ${url}`);
-}
-
-// ─── Product Fetcher ──────────────────────────────────────────────────────────
-
-async function fetchProductsForTerm(term, locationId, tokenMgr, dryRun) {
-  const products = [];
-  const totalPages = dryRun ? 1 : MAX_PAGES;
-
-  for (let page = 0; page < totalPages; page++) {
-    const start = page * PAGE_LIMIT + 1;
-    const params = new URLSearchParams({
-      "filter.term": term,
-      "filter.limit": PAGE_LIMIT,
-      "filter.start": start,
-    });
-    if (locationId) params.set("filter.locationId", locationId);
-
-    const url = `${PRODUCTS_URL}?${params}`;
-
-    let token = await tokenMgr.getToken();
-
-    let data;
-    try {
-      data = await fetchWithRetry(url, {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-      });
-    } catch (err) {
-      if (err.code === "UNAUTHORIZED") {
-        tokenMgr.expiresAt = 0;
-        token = await tokenMgr.getToken();
-        data = await fetchWithRetry(url, {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-        });
-      } else {
-        throw err;
-      }
-    }
-
-    const items = data?.data ?? [];
-    products.push(...items);
-
-    if (items.length < PAGE_LIMIT) break;
-
-    await sleep(REQUEST_DELAY_MS);
-  }
-
-  return products;
-}
-
-// ─── CSV Utilities ────────────────────────────────────────────────────────────
-
-function csvEscape(value) {
-  if (value === null || value === undefined) return "";
-  const str = String(value);
-  if (str.includes(",") || str.includes('"') || str.includes("\n")) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
-}
-
-const CSV_HEADERS = [
-  "productId",
-  "upc",
-  "aisleLocations",
-  "brand",
-  "categories",
-  "countryOrigin",
-  "description",
-  "images",
-  "itemsFacets",
-  "temperature",
-  "soldInStore",
-  "priceRegular",
-  "pricePromo",
-  "priceSaleEndDate",
-  "size",
-  "soldBy",
-  "stock",
-  "fulfillment_inStore",
-  "fulfillment_shipToHome",
-  "fulfillment_delivery",
-];
-
-function productToRow(p) {
-  const items = p.items?.[0] ?? {};
-  const price = items.price ?? {};
-  const fulfillment = items.fulfillment ?? {};
-
-  return [
-    p.productId,
-    p.upc,
-    (p.aisleLocations ?? []).map((a) => a.description).join("; "),
-    p.brand,
-    (p.categories ?? []).join("; "),
-    p.countryOrigin,
-    p.description,
-    (p.images ?? [])
-      .filter((img) => img.perspective === "front" && img.featured)
-      .map((img) => {
-        const large = (img.sizes ?? []).find((s) => s.id === "large");
-        return large?.url ?? img.sizes?.[0]?.url ?? "";
-      })
-      .join("; "),
-    (p.itemsFacets ?? []).join("; "),
-    items.temperature?.indicator,
-    items.soldInStore,
-    price.regular,
-    price.promo,
-    price.saleEndDate,
-    items.size,
-    items.soldBy,
-    items.inventory?.stockLevel,
-    fulfillment.inStore,
-    fulfillment.shipToHome,
-    fulfillment.delivery,
-  ].map(csvEscape).join(",");
-}
-
-function writeCsv(filePath, rows) {
-  const header = CSV_HEADERS.join(",");
-  const content = [header, ...rows].join("\n");
-  fs.writeFileSync(filePath, content, "utf8");
-}
-
-// ─── Main ─────────────────────────────────────────────────────────────────────
+// ─── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
-  const clientId = process.env.KROGER_CLIENT_ID;
+  const clientId     = process.env.KROGER_CLIENT_ID;
   const clientSecret = process.env.KROGER_CLIENT_SECRET;
+  const tokenMgr     = new TokenManager(clientId, clientSecret);
 
-  // Validate location ID — must be exactly 8 alphanumeric chars or empty
-  const locationId = validateLocationId(
-    locationArgRaw || process.env.KROGER_LOCATION_ID || ""
-  );
+  // ── Resolve location ID (priority: --location > --zipcode > env var) ────────
+  let locationId = "";
 
-  const tokenMgr = new TokenManager(clientId, clientSecret);
+  if (locationArgRaw) {
+    // Hard-coded via --location flag
+    locationId = validateLocationId(locationArgRaw);
+  } else if (zipcodeArg) {
+    // Zip code lookup via --zipcode flag
+    const zip = validateZipCode(zipcodeArg);
+    locationId = await resolveLocationFromZip(zip, radiusArg, tokenMgr);
+  } else if (process.env.KROGER_LOCATION_ID) {
+    // Fall back to .env value
+    locationId = validateLocationId(process.env.KROGER_LOCATION_ID);
+  }
 
+  if (!locationId) {
+    console.log(
+      "\n  No location ID provided. Products will be fetched without store-specific\n" +
+      "  pricing or stock data. Use --zipcode=XXXXX to enable pricing.\n"
+    );
+  }
+
+  // ── Category selection ──────────────────────────────────────────────────────
   const categoryKeys = categoryFilter
     ? categoryFilter.split(",").map((s) => s.trim()).filter((k) => FOOD_CATEGORIES[k])
     : Object.keys(FOOD_CATEGORIES);
 
   if (categoryFilter && categoryKeys.length === 0) {
     console.error(
-      `None of the specified categories are valid. Valid keys:\n  ${Object.keys(FOOD_CATEGORIES).join(", ")}`
+      `None of the specified categories are valid.\nValid keys: ${Object.keys(FOOD_CATEGORIES).join(", ")}`
     );
     process.exit(1);
   }
@@ -387,13 +458,14 @@ async function main() {
   console.log(`  Categories:  ${categoryKeys.join(", ")}`);
   console.log(`  Dry run:     ${isDryRun}\n`);
 
+  // ── Scrape loop ─────────────────────────────────────────────────────────────
   const stats = { totalProducts: 0, totalRequests: 0, categories: {} };
 
   for (const categoryKey of categoryKeys) {
     const terms = FOOD_CATEGORIES[categoryKey];
     console.log(`\nCategory: ${categoryKey} (${terms.length} terms)`);
 
-    const productMap = new Map();
+    const productMap = new Map(); // productId → product (dedup within category)
 
     for (const term of terms) {
       process.stdout.write(`  Searching "${term}" ... `);
@@ -411,25 +483,23 @@ async function main() {
       } catch (err) {
         process.stdout.write(`\n  ERROR: ${err.message}\n`);
       }
-
       await sleep(REQUEST_DELAY_MS);
     }
 
-    const rows = Array.from(productMap.values()).map(productToRow);
     const csvPath = path.join(outDir, `${categoryKey}.csv`);
-    writeCsv(csvPath, rows);
+    writeCsv(csvPath, Array.from(productMap.values()).map(productToRow));
 
     stats.categories[categoryKey] = productMap.size;
     stats.totalProducts += productMap.size;
     console.log(`  Saved ${productMap.size} unique products -> ${csvPath}`);
   }
 
-  const summaryPath = path.join(outDir, "_summary.csv");
+  // ── Summary ─────────────────────────────────────────────────────────────────
   const summaryRows = [
     "category,unique_products",
     ...Object.entries(stats.categories).map(([k, v]) => `${k},${v}`),
   ];
-  fs.writeFileSync(summaryPath, summaryRows.join("\n"), "utf8");
+  fs.writeFileSync(path.join(outDir, "_summary.csv"), summaryRows.join("\n"), "utf8");
 
   console.log(`\n${"─".repeat(55)}`);
   console.log(`Done!`);
