@@ -1,5 +1,0 @@
-fetchProducts reads all categories named in the csvs in Categories folder and fetches all products from those categories and stores them into csvs in walmart_CSVs.
-
-deleteEmptyCSVs.js SHOULD delete all eptycsvs present in walmart_CSVs
-
-WARNING, some folder pathing may be incorrect in this, fix this when needed.
