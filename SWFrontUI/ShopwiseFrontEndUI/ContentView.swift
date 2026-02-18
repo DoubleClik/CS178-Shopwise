@@ -446,3 +446,7 @@ struct ContentView: View {
         .modelContainer(for: Item.self, inMemory: true)
 }
 
+#Preview {
+    AuthView()
+        .environmentObject(AuthManager())
+}
