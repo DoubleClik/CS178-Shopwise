@@ -1,17 +1,17 @@
-import crypto from "crypto";
-import fs from "fs";
-import path from "path";
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 // Walmart base
-const BASE = "https://developer.api.walmart.com";
+const BASE = 'https://developer.api.walmart.com';
 
 // Taxonomy endpoint (Affiliates v1 taxonomy docs)
 // If your earlier working script used a different path, swap it here.
-const TAXONOMY_PATH = "/api-proxy/service/affil/product/v2/taxonomy";
+const TAXONOMY_PATH = '/api-proxy/service/affil/product/v2/taxonomy';
 
 // Output files
-const OUT_PRETTY = path.resolve(process.cwd(), "taxonomy.json");
-const OUT_RAW = path.resolve(process.cwd(), "taxonomy_raw.json");
+const OUT_PRETTY = path.resolve(process.cwd(), 'taxonomy.json');
+const OUT_RAW = path.resolve(process.cwd(), 'taxonomy_raw.json');
 
 /* -------------------- AUTH / HEADERS -------------------- */
 
@@ -49,78 +49,78 @@ sVP5T4Vx30thw2cpbOY227Q=
 };
 
 function canonicalizeForSignature({ consumerId, ts, keyVer }) {
-    const map = {
-        "WM_CONSUMER.ID": String(consumerId).trim(),
-        "WM_CONSUMER.INTIMESTAMP": String(ts).trim(),
-        "WM_SEC.KEY_VERSION": String(keyVer).trim(),
-    };
+  const map = {
+    'WM_CONSUMER.ID': String(consumerId).trim(),
+    'WM_CONSUMER.INTIMESTAMP': String(ts).trim(),
+    'WM_SEC.KEY_VERSION': String(keyVer).trim(),
+  };
 
-    const sortedKeys = Object.keys(map).sort();
-    return sortedKeys.map((k) => map[k]).join("\n") + "\n";
+  const sortedKeys = Object.keys(map).sort();
+  return sortedKeys.map((k) => map[k]).join('\n') + '\n';
 }
 
 function buildAuthHeaders() {
-    const id = String(keyData.consumerId).trim();
-    const kv = String(keyData.keyVer).trim();
-    const ts = String(Date.now()).trim();
+  const id = String(keyData.consumerId).trim();
+  const kv = String(keyData.keyVer).trim();
+  const ts = String(Date.now()).trim();
 
-    const toSign = canonicalizeForSignature({ consumerId: id, ts, keyVer: kv });
+  const toSign = canonicalizeForSignature({ consumerId: id, ts, keyVer: kv });
 
-    const signature = crypto
-        .sign("RSA-SHA256", Buffer.from(toSign, "utf8"), {
-            key: keyData.privateKeyPem,
-            padding: crypto.constants.RSA_PKCS1_PADDING,
-        })
-        .toString("base64");
+  const signature = crypto
+    .sign('RSA-SHA256', Buffer.from(toSign, 'utf8'), {
+      key: keyData.privateKeyPem,
+      padding: crypto.constants.RSA_PKCS1_PADDING,
+    })
+    .toString('base64');
 
-    return {
-        "WM_CONSUMER.ID": id,
-        "WM_CONSUMER.INTIMESTAMP": ts,
-        "WM_SEC.TIMESTAMP": ts,
-        "WM_SEC.KEY_VERSION": kv,
-        "WM_SEC.AUTH_SIGNATURE": signature,
-        Accept: "application/json",
-    };
+  return {
+    'WM_CONSUMER.ID': id,
+    'WM_CONSUMER.INTIMESTAMP': ts,
+    'WM_SEC.TIMESTAMP': ts,
+    'WM_SEC.KEY_VERSION': kv,
+    'WM_SEC.AUTH_SIGNATURE': signature,
+    Accept: 'application/json',
+  };
 }
 
 /* -------------------- MAIN -------------------- */
 
 async function main() {
-    const url = new URL(BASE + TAXONOMY_PATH);
-    url.searchParams.set("format", "json");
+  const url = new URL(BASE + TAXONOMY_PATH);
+  url.searchParams.set('format', 'json');
 
-    console.log("Requesting taxonomy:");
-    console.log(url.toString(), "\n");
+  console.log('Requesting taxonomy:');
+  console.log(url.toString(), '\n');
 
-    const headers = buildAuthHeaders();
+  const headers = buildAuthHeaders();
 
-    const res = await fetch(url.toString(), { headers });
-    const text = await res.text();
+  const res = await fetch(url.toString(), { headers });
+  const text = await res.text();
 
-    // Always save raw response for debugging
-    fs.writeFileSync(OUT_RAW, text, "utf8");
-    console.log(`Saved raw response to: ${OUT_RAW}`);
+  // Always save raw response for debugging
+  fs.writeFileSync(OUT_RAW, text, 'utf8');
+  console.log(`Saved raw response to: ${OUT_RAW}`);
 
-    if (!res.ok) {
-        throw new Error(`HTTP ${res.status} ${res.statusText}\n${text}`);
-    }
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} ${res.statusText}\n${text}`);
+  }
 
-    // Parse + pretty print
-    let data;
-    try {
-        data = JSON.parse(text);
-    } catch (e) {
-        throw new Error(
-            `Response was not valid JSON. Raw response saved to taxonomy_raw.json.\nParse error: ${e.message}`
-        );
-    }
+  // Parse + pretty print
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    throw new Error(
+      `Response was not valid JSON. Raw response saved to taxonomy_raw.json.\nParse error: ${e.message}`,
+    );
+  }
 
-    fs.writeFileSync(OUT_PRETTY, JSON.stringify(data, null, 4), "utf8");
-    console.log(`Saved pretty taxonomy to: ${OUT_PRETTY}`);
+  fs.writeFileSync(OUT_PRETTY, JSON.stringify(data, null, 4), 'utf8');
+  console.log(`Saved pretty taxonomy to: ${OUT_PRETTY}`);
 }
 
 main().catch((e) => {
-    console.error("\nFailed to download taxonomy:");
-    console.error(e.message);
-    process.exit(1);
+  console.error('\nFailed to download taxonomy:');
+  console.error(e.message);
+  process.exit(1);
 });

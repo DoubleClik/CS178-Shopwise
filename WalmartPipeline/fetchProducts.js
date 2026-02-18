@@ -644,12 +644,11 @@ async function main() {
 
       await new Promise((resolve) => categoryStream.end(resolve));
 
-      if(categoryCount != 0) {
+      if (categoryCount != 0) {
         console.log(
           `Wrote category CSV: ${path.basename(categoryFile)} (${categoryCount} rows)`,
         );
       }
-      
     }
 
     await new Promise((resolve) => subtreeAggStream.end(resolve));

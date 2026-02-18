@@ -11,6 +11,7 @@ Download from **https://ollama.com/download** (macOS, Windows, Linux).
 
 After installing, Ollama runs automatically in the background.
 If it isn't running, start it with:
+
 ```bash
 ollama serve
 ```
@@ -36,12 +37,13 @@ python classify_ingredients.py /path/to/csv/folder
 
 **Options:**
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-o / --output` | `classified_ingredients.csv` | Output file path |
-| `-m / --model`  | `llama3.2` | Any model you've pulled locally |
+| Flag            | Default                      | Description                     |
+| --------------- | ---------------------------- | ------------------------------- |
+| `-o / --output` | `classified_ingredients.csv` | Output file path                |
+| `-m / --model`  | `llama3.2`                   | Any model you've pulled locally |
 
 **Examples:**
+
 ```bash
 # Use default model
 python classify_ingredients.py ./data
@@ -54,38 +56,38 @@ python classify_ingredients.py ./data -m mistral -o results.csv
 
 ## Output columns
 
-| Column | Description |
-|--------|-------------|
-| `name` | Product name (from source CSV) |
-| `ingredient` | `True` / `False` |
-| `classifiers` | Pipe-separated tags, e.g. `PROTEIN\|CANNED_GOOD` |
-| `retail_price` | From source CSV |
-| `thumbnailImage` | From source CSV |
-| `mediumImage` | From source CSV |
-| `largeImage` | From source CSV |
-| `color` | From source CSV |
+| Column           | Description                                      |
+| ---------------- | ------------------------------------------------ |
+| `name`           | Product name (from source CSV)                   |
+| `ingredient`     | `True` / `False`                                 |
+| `classifiers`    | Pipe-separated tags, e.g. `PROTEIN\|CANNED_GOOD` |
+| `retail_price`   | From source CSV                                  |
+| `thumbnailImage` | From source CSV                                  |
+| `mediumImage`    | From source CSV                                  |
+| `largeImage`     | From source CSV                                  |
+| `color`          | From source CSV                                  |
 
 ---
 
 ## Classifier tags
 
-| Tag | What it covers |
-|-----|---------------|
-| `PROTEIN` | Meat, poultry, seafood, eggs, tofu, legumes |
-| `DAIRY` | Milk, cheese, butter, cream, yogurt |
-| `PRODUCE` | Fresh/frozen vegetables and fruits |
-| `GRAIN` | Flour, rice, pasta, bread, oats |
-| `BAKING` | Leavening, sugar, chocolate chips, extracts |
-| `SPICE` | Dried spices, herbs, seasoning blends, salt |
-| `OIL_FAT` | Oils, lard, shortening, ghee |
-| `CONDIMENT` | Sauces, vinegars, mustard, ketchup, soy sauce |
-| `CANNED_GOOD` | Canned/jarred veg, beans, broth, tomatoes |
-| `SWEETENER` | Honey, maple syrup, agave, sugar (as sweetener) |
-| `NUT_SEED` | Nuts, seeds, nut butters |
-| `ALCOHOL` | Wine, beer, spirits used in cooking |
-| `THICKENER` | Cornstarch, arrowroot, gelatin, agar |
-| `FRESH_HERB` | Fresh basil, parsley, cilantro, etc. |
-| `OTHER_INGR` | Genuine ingredient not fitting above |
+| Tag           | What it covers                                  |
+| ------------- | ----------------------------------------------- |
+| `PROTEIN`     | Meat, poultry, seafood, eggs, tofu, legumes     |
+| `DAIRY`       | Milk, cheese, butter, cream, yogurt             |
+| `PRODUCE`     | Fresh/frozen vegetables and fruits              |
+| `GRAIN`       | Flour, rice, pasta, bread, oats                 |
+| `BAKING`      | Leavening, sugar, chocolate chips, extracts     |
+| `SPICE`       | Dried spices, herbs, seasoning blends, salt     |
+| `OIL_FAT`     | Oils, lard, shortening, ghee                    |
+| `CONDIMENT`   | Sauces, vinegars, mustard, ketchup, soy sauce   |
+| `CANNED_GOOD` | Canned/jarred veg, beans, broth, tomatoes       |
+| `SWEETENER`   | Honey, maple syrup, agave, sugar (as sweetener) |
+| `NUT_SEED`    | Nuts, seeds, nut butters                        |
+| `ALCOHOL`     | Wine, beer, spirits used in cooking             |
+| `THICKENER`   | Cornstarch, arrowroot, gelatin, agar            |
+| `FRESH_HERB`  | Fresh basil, parsley, cilantro, etc.            |
+| `OTHER_INGR`  | Genuine ingredient not fitting above            |
 
 **Not classified as ingredients:** prepared meals, beverages, supplements,
 kitchen equipment, or standalone snack foods.
