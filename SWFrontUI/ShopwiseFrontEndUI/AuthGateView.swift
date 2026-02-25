@@ -13,11 +13,14 @@ struct AuthGateView: View {
     var body: some View {
         Group {
             if auth.isSignedIn {
-                // ✅ Your main app view (what you showed in screenshot)
                 ContentView()
             } else {
                 AuthView()
             }
+        }
+        .task {
+            // Restore session if tokens exist
+            await auth.restoreSession()
         }
     }
 }

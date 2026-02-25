@@ -1,3 +1,10 @@
+//
+//  AuthView.swift
+//  ShopwiseFrontEndUI
+//
+//  Created by Nicholas Castellanos on 2/2/26.
+//
+
 import SwiftUI
 
 struct AuthView: View {

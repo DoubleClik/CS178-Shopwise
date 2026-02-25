@@ -450,3 +450,4 @@ struct ContentView: View {
     AuthView()
         .environmentObject(AuthManager())
 }
+
