@@ -1,0 +1,14 @@
+/WalmartPipeline/walmart_CSVs
+/WalmartPipeline/__pycache__
+/.vscode
+/WalmartPipeline/TaxonomyBrowsing/taxonomy.json
+RecipesDataset.csv
+openapi_key.py
+.env
+/__pycache__
+classified_ingredients.csv
+node_modules/
+.DS_Store
+xcuserdata/
+*.xcuserstate
+*.xcbkptlist
