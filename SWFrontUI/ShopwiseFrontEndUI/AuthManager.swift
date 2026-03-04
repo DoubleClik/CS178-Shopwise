@@ -50,6 +50,13 @@ import Foundation
 import SwiftUI
 import Combine
 
+struct PostgrestError: Decodable {
+    let message: String?
+    let details: String?
+    let hint: String?
+    let code: String?
+}
+
 @MainActor
 final class AuthManager: ObservableObject {
     // MARK: - Supabase config
@@ -279,11 +286,35 @@ final class AuthManager: ObservableObject {
         guard let http = resp as? HTTPURLResponse else { throw URLError(.badServerResponse) }
 
         if !(200...299).contains(http.statusCode) {
-            // Try to decode Supabase error message
-            if let sbErr = try? JSONDecoder().decode(SupabaseError.self, from: data) {
-                throw NSError(domain: "SupabaseAuth", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: sbErr.msg ?? sbErr.error_description ?? "Auth error"])
+
+            // ✅ 1) Print raw body in Xcode console
+            let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+            print("❌ Supabase HTTP \(http.statusCode) \(url.absoluteString)")
+            print("❌ Body: \(raw)")
+
+            // ✅ 2) Try PostgREST error first
+            if let pg = try? JSONDecoder().decode(PostgrestError.self, from: data),
+               let msg = pg.message, !msg.isEmpty {
+                var full = msg
+                if let details = pg.details, !details.isEmpty { full += "\nDetails: \(details)" }
+                if let hint = pg.hint, !hint.isEmpty { full += "\nHint: \(hint)" }
+
+                throw NSError(domain: "Supabase", code: http.statusCode,
+                              userInfo: [NSLocalizedDescriptionKey: full])
             }
-            throw NSError(domain: "SupabaseAuth", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode)"])
+
+            // ✅ 3) Then try auth-style error
+            if let sb = try? JSONDecoder().decode(SupabaseError.self, from: data) {
+                let msg = sb.msg ?? sb.error_description ?? sb.error ?? ""
+                if !msg.isEmpty {
+                    throw NSError(domain: "Supabase", code: http.statusCode,
+                                  userInfo: [NSLocalizedDescriptionKey: msg])
+                }
+            }
+
+            // ✅ 4) Last resort: show raw response
+            throw NSError(domain: "Supabase", code: http.statusCode,
+                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode)\n\(raw)"])
         }
 
         return (data, http)
@@ -328,4 +359,91 @@ struct SupabaseError: Codable {
     let error: String?
     let error_description: String?
     let msg: String?
+}
+
+
+// ------ Walmart Items Fetcher ------ //
+
+extension AuthManager {
+    func fetchWalmartItems(
+        search: String? = nil,
+        ingredientOnly: Bool? = nil,
+        limit: Int = 50,
+        offset: Int = 0
+    ) async throws -> [WalmartItem] {
+
+        let tableName = "classified_ingredients_aa"  // <-- CHANGE THIS
+
+        let base = supabaseURL
+            .appendingPathComponent("rest/v1")
+            .appendingPathComponent(tableName)
+
+        var comps = URLComponents(url: base, resolvingAgainstBaseURL: false)!
+        var q: [URLQueryItem] = [
+            URLQueryItem(
+                name: "select",
+                value: "id,name,ingredient,classifiers,retail_price,thumbnailImage,mediumImage,largeImage,color"
+            ),
+            URLQueryItem(name: "limit", value: "\(limit)"),
+            URLQueryItem(name: "offset", value: "\(offset)"),
+            URLQueryItem(name: "order", value: "id.asc")
+        ]
+
+        if let s = search?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !s.isEmpty {
+            q.append(URLQueryItem(name: "name", value: "ilike.*\(s)*"))
+        }
+
+        if let ingredientOnly {
+            // PostgREST boolean filter
+            q.append(URLQueryItem(name: "ingredient", value: "eq.\(ingredientOnly ? "true" : "false")"))
+        }
+
+        comps.queryItems = q
+        guard let url = comps.url else { throw URLError(.badURL) }
+
+        let (data, _) = try await request(
+            url: url,
+            method: "GET",
+            jsonBody: Optional<String>.none,
+            bearerToken: accessToken
+        )
+
+        return try JSONDecoder().decode([WalmartItem].self, from: data)
+    }
+}
+
+// --- Recpie Fetcher --- //
+
+extension AuthManager {
+    func fetchRecipes(search: String? = nil, limit: Int = 50, offset: Int = 0) async throws -> [RecipeRow] {
+        let base = supabaseURL
+            .appendingPathComponent("rest/v1/Recipes_Kaggle")
+
+        var comps = URLComponents(url: base, resolvingAgainstBaseURL: false)!
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(
+                name: "select",
+                value: "id,Title,Ingredients,Instructions,Image_Name,Cleaned_Ingredients,image_url"
+            ),
+            URLQueryItem(name: "limit", value: "\(limit)"),
+            URLQueryItem(name: "offset", value: "\(offset)"),
+            URLQueryItem(name: "order", value: "id.asc")
+        ]
+
+        if let s = search?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            queryItems.append(URLQueryItem(name: "Title", value: "ilike.*\(s)*"))
+        }
+
+        comps.queryItems = queryItems
+
+        let (data, _) = try await request(
+            url: comps.url!,
+            method: "GET",
+            jsonBody: Optional<String>.none,
+            bearerToken: accessToken
+        )
+
+        return try JSONDecoder().decode([RecipeRow].self, from: data)
+    }
 }
