@@ -15,3 +15,11 @@ xcuserdata/
 
 # Node
 node_modules/
+
+# macOS
+.DS_Store
+
+# Xcode user data
+xcuserdata/
+*.xcuserstate
+*.xcbkptlist
