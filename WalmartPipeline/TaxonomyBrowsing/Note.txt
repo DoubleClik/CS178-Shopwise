@@ -1,0 +1,2 @@
+Run generateTaxonomy.js to create a taxonomy.json file.
+Then run browseTaxonomyExport.js and use that to output all subcategories under Food and Food_Grocery.
