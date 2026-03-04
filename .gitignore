@@ -31,3 +31,6 @@ xcuserdata/
 xcuserdata/
 *.xcuserstate
 *.xcbkptlist
+
+# Node
+node_modules/
