@@ -51,11 +51,36 @@ extension View {
 }
 
 struct ProfileView: View {
+    @EnvironmentObject var auth: AuthManager
+
     var body: some View {
         List {
+
             Section("Account") {
-                Text("Profile info will go here")
-                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Image(systemName: "person.circle.fill")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.blue)
+
+                    VStack(alignment: .leading) {
+                        Text(auth.userEmail ?? "No email")
+                            .font(.headline)
+
+                        Text("Signed in")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 6)
+            }
+
+            Section {
+                Button(role: .destructive) {
+                    Task { await auth.signOut() }
+                } label: {
+                    Text("Sign Out")
+                }
             }
         }
         .navigationTitle("Profile")
@@ -443,6 +468,7 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
+        .environmentObject(AuthManager())
         .modelContainer(for: Item.self, inMemory: true)
 }
 
