@@ -55,9 +55,7 @@ struct ProfileView: View {
 
     var body: some View {
         List {
-
             Section("Account") {
-
                 HStack {
                     Image(systemName: "person.circle.fill")
                         .font(.system(size: 36))
@@ -73,6 +71,14 @@ struct ProfileView: View {
                     }
                 }
                 .padding(.vertical, 6)
+            }
+
+            Section("Preferences") {
+                NavigationLink {
+                    OnboardingSurveyView()
+                } label: {
+                    Label("Edit Diet & Allergies", systemImage: "slider.horizontal.3")
+                }
             }
 
             Section {

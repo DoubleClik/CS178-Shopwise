@@ -9,17 +9,23 @@ import SwiftUI
 
 struct AuthGateView: View {
     @EnvironmentObject var auth: AuthManager
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     var body: some View {
         Group {
             if auth.isSignedIn {
-                ContentView()
+                if hasCompletedOnboarding {
+                    ContentView()
+                } else {
+                    NavigationStack {
+                        OnboardingSurveyView()
+                    }
+                }
             } else {
                 AuthView()
             }
         }
         .task {
-            // Restore session if tokens exist
             await auth.restoreSession()
         }
     }
