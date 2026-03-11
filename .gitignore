@@ -1,0 +1,9 @@
+.DS_Store
+/WalmartPipeline/__pycache__
+/.vscode
+RecipesDataset.csv
+openapi_key.py
+.env
+/__pycache__
+classified_ingredients.csv
+/kroger_output
