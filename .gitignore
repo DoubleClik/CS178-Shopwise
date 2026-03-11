@@ -1,6 +1,7 @@
-.DS_Store
+/WalmartPipeline/walmart_CSVs
 /WalmartPipeline/__pycache__
 /.vscode
+/WalmartPipeline/TaxonomyBrowsing/taxonomy.json
 RecipesDataset.csv
 openapi_key.py
 .env
