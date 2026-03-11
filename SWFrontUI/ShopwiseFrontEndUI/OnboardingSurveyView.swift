@@ -1,14 +1,13 @@
 import SwiftUI
 
 struct OnboardingSurveyView: View {
+    @EnvironmentObject var auth: AuthManager
     @Environment(\.dismiss) private var dismiss
-
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
-    @AppStorage("savedDietPreferences") private var savedDietPreferencesData = Data()
-    @AppStorage("savedAllergies") private var savedAllergiesData = Data()
 
     @State private var selectedDiets: Set<String> = []
     @State private var selectedAllergies: Set<String> = []
+    @State private var isSaving = false
+    @State private var errorMessage: String?
 
     let dietOptions = [
         "Vegetarian", "Vegan", "Pescatarian",
@@ -20,6 +19,8 @@ struct OnboardingSurveyView: View {
         "Peanuts", "Tree Nuts", "Dairy", "Eggs",
         "Soy", "Wheat", "Shellfish", "Fish", "Sesame"
     ]
+
+    var onComplete: (() -> Void)? = nil
 
     var body: some View {
         List {
@@ -45,19 +46,34 @@ struct OnboardingSurveyView: View {
                 }
             }
 
+            if let errorMessage {
+                Section {
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                }
+            }
+
             Section {
                 Button {
-                    savePreferences()
+                    Task {
+                        await savePreferences()
+                    }
                 } label: {
-                    Text("Save Preferences")
-                        .frame(maxWidth: .infinity)
+                    if isSaving {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Text("Save Preferences")
+                            .frame(maxWidth: .infinity)
+                    }
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(isSaving)
             }
         }
         .navigationTitle("Your Preferences")
-        .onAppear {
-            loadSavedPreferences()
+        .task {
+            await loadPreferences()
         }
     }
 
@@ -69,26 +85,37 @@ struct OnboardingSurveyView: View {
         }
     }
 
-    private func savePreferences() {
-        if let dietData = try? JSONEncoder().encode(Array(selectedDiets).sorted()) {
-            savedDietPreferencesData = dietData
+    private func loadPreferences() async {
+        do {
+            if let prefs = try await auth.fetchUserPreferences() {
+                selectedDiets = Set(prefs.dietPreferences)
+                selectedAllergies = Set(prefs.allergies)
+            }
+        } catch {
+            errorMessage = error.localizedDescription
         }
-
-        if let allergyData = try? JSONEncoder().encode(Array(selectedAllergies).sorted()) {
-            savedAllergiesData = allergyData
-        }
-
-        hasCompletedOnboarding = true
-        dismiss()
     }
 
-    private func loadSavedPreferences() {
-        if let savedDiets = try? JSONDecoder().decode([String].self, from: savedDietPreferencesData) {
-            selectedDiets = Set(savedDiets)
-        }
+    private func savePreferences() async {
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
 
-        if let savedAllergies = try? JSONDecoder().decode([String].self, from: savedAllergiesData) {
-            selectedAllergies = Set(savedAllergies)
+        do {
+            let prefs = UserPreferences(
+                dietPreferences: Array(selectedDiets).sorted(),
+                allergies: Array(selectedAllergies).sorted()
+            )
+
+            try await auth.saveUserPreferences(prefs)
+
+            if let onComplete {
+                onComplete()
+            } else {
+                dismiss()
+            }
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }
