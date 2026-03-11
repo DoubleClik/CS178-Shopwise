@@ -10,6 +10,7 @@ import SwiftData
 import MapKit
 import CoreLocation
 
+
 struct AppToolbar: ViewModifier {
     func body(content: Content) -> some View {
         content
@@ -128,6 +129,7 @@ struct SettingsView: View {
         .navigationTitle("Settings")
     }
 }
+
 
 struct SearchView: View {
     @EnvironmentObject private var auth: AuthManager
