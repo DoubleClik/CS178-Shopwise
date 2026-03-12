@@ -1,9 +1,12 @@
-.DS_Store
+/WalmartPipeline/walmart_CSVs
 /WalmartPipeline/__pycache__
 /.vscode
+/WalmartPipeline/TaxonomyBrowsing/taxonomy.json
 RecipesDataset.csv
 openapi_key.py
 .env
 /__pycache__
 classified_ingredients.csv
 /kroger_output
+.DS_Store
+node_modules/

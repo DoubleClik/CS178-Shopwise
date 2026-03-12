@@ -1,92 +1,83 @@
+/**
+ * fetchProducts.js
+ *
+ * Pulls Walmart food products by category and saves them to CSVs.
+ * You can import run() from another script or just run this file directly.
+ *
+ * Credentials go in .env:
+ *   WM_CONSUMER_ID, WM_KEY_VERSION, WM_PRIVATE_KEY
+ *
+ * All the config options (page size, delays, dedup settings, etc.) have
+ * defaults so calling run() with no arguments should just work.
+ */
+
+import dotenv from 'dotenv';
+dotenv.config();
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const CATEGORIES_DIR = 'WalmartPipeline/Categories';
-const OUT_DIR = 'WalmartPipeline/walmart_CSVs';
+const __filename = fileURLToPath(import.meta.url);
 
-// Walmart endpoint
 const BASE = 'https://developer.api.walmart.com';
 const PAGINATED_PATH = '/api-proxy/service/affil/product/v2/paginated/items';
-
-// Page and Category Ping Delay
-const COUNT_PER_PAGE = 500;
-const REQUEST_DELAY_MS = 25; // between pages
-const CATEGORY_DELAY_MS = 25; // between categories
-
-// Retry Attempt Tuning
-const FETCH_ATTEMPTS = 5;
-const RETRY_BASE_DELAY_MS = 50;
-
-// Output behavior
-const EXPORT_PARENT_ROWS_TOO = false; // false = leaf-ish only
-const DEDUPE_WITHIN_EACH_CATEGORY_CSV = true; // dedupe itemId inside each category CSV
-const DEDUPE_WITHIN_SUBTREE_AGG = true; // dedupe within subtree aggregate
-const DEDUPE_MASTER = false; // dedupe in global master
-
-// Logging
 const MAX_ERROR_BODY_CHARS = 1200;
 
-/* -------------------- AUTH / HEADERS -------------------- */
+// columns we actually care about for ingredient matching
+// dropped a bunch of stuff (images, ratings, tracking URLs) that we don't need
+// added size because it helps with dedup and matching later
 
-const keyData = {
-  consumerId: '39d025f8-e575-48cf-aa4e-22f89da4c16f',
-  keyVer: '5', // keep as STRING; must match walmart.io key version exactly
-  privateKeyPem: `-----BEGIN RSA PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC1hpiZMh1pyN6k
-oDO95qK3L+/uY3M+sUpcnQkuNdFPBChh3jxEjn3zQLm88rdBTKQVqDD8E7g2KBHX
-wYaSiKqqXcBkMkPfEEyTE/I//BjDF5dS+sgR6uIJmfsNVIVkY7laxo0STFCO3G+V
-gkHTp8u/lJ5Aa8NSxu4BYlR0wBpze40aHYBeQw/+QuPvZzNeUf5YNC3rs5eId2f5
-N0rA2mZfY1myzE6UarW+5+WrWbkR0Bwrvs+8B/S8Jh4QFmh2EDaucisx96MXSH5S
-3BuzBxqE9Txo4TKGu0y/aDmRU1Ij5WP88VnURU3vna1UF5n/pPw6InzvcQkeGS1o
-thpyvCvtAgMBAAECggEABFOmXm5twvqOQpRa0/Gxo9YX/0iJoZPPdcPhLdF5N/lU
-bqdUGeyojxoD41rkHviDXpXH9x9YxwevQp7QcrygjsU6Xv2YuekC3j69ycjcHKqf
-UlygHdc3O2r/tHOr1G2RFhITIIbHEqSpqqY9ke7paxtaOQKojqpL/F1jdr8WduM9
-WQqbpgk+Hc6PIYVdUeALMX+IGNWbZiX6zqm85IKUdAA4/V0RCMl/j9ySBP6TsT06
-5IXK63urXl+AOJh1tHV79GP/waETEc6rQ8Ntn9p3HsUtsx6qiLSky7E2m2L3rdVd
-LOzM2vVQDKr0SMGfx4/ZA79OJbLvJnwon9l4WdxmeQKBgQDb4L7sI4FnnD7uAaV5
-NTxt6ELJIpgxalTXbGiD6BoGN7LPbRfLJmKP4pGbNkfxtLZKsrTXOE1z5bTurRzY
-dsH9pEmhBf7SdYtNrnPZCfOwpZaK/PyVdIggnaAiVYD6Q5urNcTltOA9SLdxGJyE
-Ny8GpdB/ItmRCUkru4uk8L3KFQKBgQDTWOaBQRPvrL7sl4nVrTlfaxDTYulFgqSx
-j3ag+RBhCwvFVNxb710moIEtThpDnaLNJCc6JQ+QebrsDP7Q49eOxqKbbbLOHGrt
-akkeMROg6+MaL7HMAMsjCj7hBnpSjCg94ldHuJ0d8/PB60amIES/TTOyTsssxIlD
-HcoX4JsIeQKBgDVHF/wP/mMksPrq2zWreKEJDmW+RDJ1GWm5kvmjW+r1xBYO0R0g
-h/FlbPK3DGe86g7fjoI32kyi9FyBBeRNomPbUxv5X+2PHdoM03Vbu/ippvi2pF1y
-hymgCBVJsp7xkt7BgJxIX6152TlGRWakGHj75LFpuF40ac52+zdUPiihAoGASmQU
-XpKljctkOKruXUPn2eo5te4u5cSia81vmCGS3lWhAwhnuAR86Ue9sFC5detajpKX
-LCQ3Ykc2wDeiyawpB5xrSAJI2buu93pd2j60BgSBn4oCLyhoWCEXGOXK0Jt83qt4
-xUn6I7zmo+9Iotjg2eU2uSB663sSRYmKxPTOHSECgYEAr9GDqLgORkKWwXhMAe3h
-R0tYdGzWqpOiVNi1hcNMGfNwQekfIAM9NVarIib5JYPkSQQQWJZVXcTlR2YZbf9/
-P5VgNbNkV23Nq7j926cpbSlgb+UsZOCC5zTaJ0L6oePnK5R38v54y2XC9ccqW6FP
-sVP5T4Vx30thw2cpbOY227Q=
------END RSA PRIVATE KEY-----`,
-};
+const COLUMNS = [
+  'item_id',
+  'name',
+  'brandName',
+  'size',
+  'retail_price',
+  'upc',
+  'subtree_name',
+  'category_id',
+  'category_name',
+  'category_path',
+  'shortDescription',
+  'thumbnailImage',
+];
 
-function canonicalizeForSignature({ consumerId, ts, keyVer }) {
-  const map = {
-    'WM_CONSUMER.ID': String(consumerId).trim(),
-    'WM_CONSUMER.INTIMESTAMP': String(ts).trim(),
-    'WM_SEC.KEY_VERSION': String(keyVer).trim(),
-  };
+function loadCredentials() {
+  const consumerId = process.env.WM_CONSUMER_ID;
+  const keyVer = process.env.WM_KEY_VERSION;
+  const privateKeyPem = process.env.WM_PRIVATE_KEY;
 
-  const sortedKeys = Object.keys(map).sort();
-  return sortedKeys.map((k) => map[k]).join('\n') + '\n';
+  if (!consumerId || !keyVer || !privateKeyPem) {
+    throw new Error(
+      'Missing Walmart credentials in .env: WM_CONSUMER_ID, WM_KEY_VERSION, WM_PRIVATE_KEY',
+    );
+  }
+
+  return { consumerId, keyVer, privateKeyPem };
 }
 
-function buildAuthHeaders() {
-  const id = String(keyData.consumerId).trim();
-  const kv = String(keyData.keyVer).trim();
+// Walmart requires a signed auth header on every request
+function buildAuthHeaders(creds) {
+  const id = String(creds.consumerId).trim();
+  const kv = String(creds.keyVer).trim();
   const ts = String(Date.now()).trim();
 
-  const toSign = canonicalizeForSignature({
-    consumerId: id,
-    ts,
-    keyVer: kv,
-  });
+  const fields = {
+    'WM_CONSUMER.ID': id,
+    'WM_CONSUMER.INTIMESTAMP': ts,
+    'WM_SEC.KEY_VERSION': kv,
+  };
+
+  const canonicalized =
+    Object.keys(fields)
+      .sort()
+      .map((k) => fields[k])
+      .join('\n') + '\n';
 
   const signature = crypto
-    .sign('RSA-SHA256', Buffer.from(toSign, 'utf8'), {
-      key: keyData.privateKeyPem,
+    .sign('RSA-SHA256', Buffer.from(canonicalized, 'utf8'), {
+      key: creds.privateKeyPem,
       padding: crypto.constants.RSA_PKCS1_PADDING,
     })
     .toString('base64');
@@ -100,8 +91,6 @@ function buildAuthHeaders() {
     Accept: 'application/json',
   };
 }
-
-/* -------------------- helpers -------------------- */
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -128,11 +117,8 @@ function formatISO(d) {
 }
 
 function msToHMS(ms) {
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  return `${hours}h ${minutes}m ${seconds}s (${ms} ms)`;
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m ${s % 60}s`;
 }
 
 function safeTruncate(s, n) {
@@ -141,8 +127,7 @@ function safeTruncate(s, n) {
   return str.slice(0, n) + `... [truncated ${str.length - n} chars]`;
 }
 
-/* -------------------- CSV parsing -------------------- */
-
+// simple CSV parser - handles quoted fields and escaped quotes
 function parseCSV(text) {
   const rows = [];
   let i = 0;
@@ -174,14 +159,12 @@ function parseCSV(text) {
       i++;
       continue;
     }
-
     if (c === ',') {
       row.push(field);
       field = '';
       i++;
       continue;
     }
-
     if (c === '\n') {
       row.push(field);
       field = '';
@@ -190,12 +173,10 @@ function parseCSV(text) {
       i++;
       continue;
     }
-
     if (c === '\r') {
       i++;
       continue;
     }
-
     field += c;
     i++;
   }
@@ -210,22 +191,15 @@ function parseCSV(text) {
 
 function rowsToObjects(rows) {
   if (!rows.length) return [];
-
   const header = rows[0].map((h) => h.trim());
-  const output = [];
-
-  for (let r = 1; r < rows.length; r++) {
+  return rows.slice(1).map((cols) => {
     const obj = {};
-    for (let c = 0; c < header.length; c++) {
-      obj[header[c]] = rows[r][c] ?? '';
-    }
-    output.push(obj);
-  }
-
-  return output;
+    header.forEach((h, i) => {
+      obj[h] = cols[i] ?? '';
+    });
+    return obj;
+  });
 }
-
-/* -------------------- subtree helpers -------------------- */
 
 function getDepth(pathValue) {
   const s = String(pathValue ?? '').trim();
@@ -237,7 +211,6 @@ function pickSubtreeRoot(objs) {
   const candidates = objs.filter(
     (o) => String(o.id ?? '').trim() && String(o.name ?? '').trim(),
   );
-
   if (!candidates.length) return null;
 
   candidates.sort((a, b) => {
@@ -253,75 +226,56 @@ function pickSubtreeRoot(objs) {
 function isParentRow(allRows, row) {
   const p = String(row.path ?? '').trim();
   if (!p) return false;
-
   const prefix = p.endsWith('/') ? p : p + '/';
   return allRows.some((o) => String(o.path ?? '').startsWith(prefix));
 }
 
-/* -------------------- row conversion -------------------- */
-
 function itemToRow(item, extra) {
   return {
-    subtree_id: extra.subtree_id,
+    item_id: item?.itemId ?? '',
+    name: item?.name ?? '',
+    brandName: item?.brandName ?? '',
+    size: item?.size ?? '',
+    retail_price: item?.salePrice ?? '',
+    upc: item?.upc ?? '',
     subtree_name: extra.subtree_name,
-
     category_id: extra.category_id,
     category_name: extra.category_name,
     category_path: extra.category_path,
-
-    item_id: item?.itemId ?? '',
-    name: item?.name ?? '',
-    msrp: item?.msrp ?? '',
-    retail_price: item?.salePrice ?? '',
-    upc: item?.upc ?? '',
     shortDescription: item?.shortDescription ?? '',
-    longDescription: item?.longDescription ?? '',
-    brandName: item?.brandName ?? '',
     thumbnailImage: item?.thumbnailImage ?? '',
-    mediumImage: item?.mediumImage ?? '',
-    largeImage: item?.largeImage ?? '',
-    color: item?.color ?? '',
-    customerRating: item?.customerRating ?? '',
-    stock: item?.stock ?? '',
-    productTrackingUrl: item?.productTrackingUrl ?? '',
-    categoryNode: item?.categoryNode ?? '',
   };
 }
 
-function csvHeader(columns) {
-  return columns.join(',') + '\n';
+function csvHeader() {
+  return COLUMNS.join(',') + '\n';
 }
 
-function rowToCSVLine(row, columns) {
-  return columns.map((k) => escapeCSV(row[k])).join(',') + '\n';
+function rowToCSVLine(row) {
+  return COLUMNS.map((k) => escapeCSV(row[k])).join(',') + '\n';
 }
 
-/* -------------------- Walmart fetching -------------------- */
-
-async function fetchPage(url, attempts = FETCH_ATTEMPTS) {
+async function fetchPage(url, creds, attempts, retryBaseDelayMs) {
   for (let i = 0; i < attempts; i++) {
-    const headers = buildAuthHeaders();
+    const headers = buildAuthHeaders(creds);
     const res = await fetch(url, { headers });
 
-    if (res.ok) {
-      return await res.json();
-    }
+    if (res.ok) return await res.json();
 
     const status = res.status;
-    const statusText = res.statusText;
-    const body = await res.text().catch(() => '');
-
     if (status === 429 || (status >= 500 && status <= 599)) {
-      const backoff = RETRY_BASE_DELAY_MS * Math.pow(2, i);
-      await sleep(backoff);
+      await sleep(retryBaseDelayMs * Math.pow(2, i));
       continue;
     }
 
-    const err = new Error(`HTTP ${status} ${statusText}`);
-    err.httpStatus = status;
-    err.httpStatusText = statusText;
-    err.url = url;
-    err.responseBody = safeTruncate(body, MAX_ERROR_BODY_CHARS);
+    const body = await res.text().catch(() => '');
+    const err = new Error(`HTTP ${status} ${res.statusText}`);
+    Object.assign(err, {
+      httpStatus: status,
+      httpStatusText: res.statusText,
+      url,
+      responseBody: safeTruncate(body, MAX_ERROR_BODY_CHARS),
+    });
     throw err;
   }
 
@@ -330,65 +284,43 @@ async function fetchPage(url, attempts = FETCH_ATTEMPTS) {
   throw err;
 }
 
-async function fetchAllItemsForCategory(categoryId) {
+async function fetchAllItemsForCategory(categoryId, creds, cfg) {
   let url = new URL(BASE + PAGINATED_PATH);
   url.searchParams.set('category', categoryId);
-  url.searchParams.set('count', String(COUNT_PER_PAGE));
+  url.searchParams.set('count', String(cfg.countPerPage));
 
   const allItems = [];
 
   while (true) {
-    const data = await fetchPage(url.toString());
+    const data = await fetchPage(
+      url.toString(),
+      creds,
+      cfg.fetchAttempts,
+      cfg.retryBaseDelayMs,
+    );
     const items = Array.isArray(data?.items) ? data.items : [];
-
     allItems.push(...items);
 
-    if (!data?.nextPageExist || !data?.nextPage) {
-      break;
-    }
+    if (!data?.nextPageExist || !data?.nextPage) break;
 
     url = new URL(
       data.nextPage.startsWith('http') ? data.nextPage : BASE + data.nextPage,
     );
-
-    await sleep(REQUEST_DELAY_MS);
+    await sleep(cfg.requestDelayMs);
   }
 
   return allItems;
 }
 
-/* -------------------- Logging / finalization -------------------- */
-
-const runState = {
-  startedAt: new Date(),
-  endedAt: null,
-  exitReason: 'completed',
-  subtreeFilesProcessed: 0,
-  categoryRowsAttempted: 0,
-  categoryRowsSucceeded: 0,
-  categoryRowsFailed: 0,
-  failures: [],
-};
-
-let finalized = false;
-let masterStreamRef = null;
-
-function writeRunLogFile(outPath) {
+// write a JSON log file at the end so we can see what happened and debug failures
+function writeRunLog(outPath, runState) {
   const endedAt = runState.endedAt ?? new Date();
-  const elapsedMs = endedAt.getTime() - runState.startedAt.getTime();
-
-  const logFolder = path.resolve(outPath);
-  if (!fs.existsSync(logFolder)) {
-    fs.mkdirSync(logFolder, { recursive: true });
-  }
-
+  const elapsed = endedAt.getTime() - runState.startedAt.getTime();
   const logName = `run_log_${sanitizeFilename(formatISO(runState.startedAt))}.json`;
-  const logPath = path.join(logFolder, logName);
-
   const payload = {
     startedAt: formatISO(runState.startedAt),
     endedAt: formatISO(endedAt),
-    elapsed: msToHMS(elapsedMs),
+    elapsed: msToHMS(elapsed),
     exitReason: runState.exitReason,
     counts: {
       subtreeFilesProcessed: runState.subtreeFilesProcessed,
@@ -398,73 +330,37 @@ function writeRunLogFile(outPath) {
     },
     failures: runState.failures,
   };
-
-  fs.writeFileSync(logPath, JSON.stringify(payload, null, 4), 'utf8');
-  console.log(`Log written: ${OUT_DIR}/${path.basename(logPath)}`);
+  fs.writeFileSync(
+    path.join(outPath, logName),
+    JSON.stringify(payload, null, 2),
+    'utf8',
+  );
+  console.log(`Log written: ${logName}`);
 }
 
-function finalizeAndExit(outPath, reason, code = 0) {
-  if (finalized) {
-    process.exit(code);
-    return;
-  }
+export async function run(config = {}) {
+  const cfg = {
+    categoriesDir: config.categoriesDir ?? 'WalmartPipeline/Categories',
+    outDir: config.outDir ?? 'WalmartPipeline/walmart_CSVs',
+    countPerPage: config.countPerPage ?? 500,
+    requestDelayMs: config.requestDelayMs ?? 25,
+    categoryDelayMs: config.categoryDelayMs ?? 25,
+    fetchAttempts: config.fetchAttempts ?? 5,
+    retryBaseDelayMs: config.retryBaseDelayMs ?? 50,
+    exportParentRows: config.exportParentRows ?? false,
+    dedupeWithinCategory: config.dedupeWithinCategory ?? true,
+    dedupeWithinSubtree: config.dedupeWithinSubtree ?? true,
+    dedupeMaster: config.dedupeMaster ?? false,
+  };
 
-  finalized = true;
-  runState.exitReason = reason ?? runState.exitReason;
-  runState.endedAt = new Date();
+  const creds = loadCredentials();
 
-  try {
-    if (masterStreamRef && !masterStreamRef.closed) {
-      masterStreamRef.end();
-    }
-  } catch (_) {}
-
-  try {
-    writeRunLogFile(outPath);
-  } catch (e) {
-    console.error('Failed to write log file:', e);
-  }
-
-  process.exit(code);
-}
-
-function registerExitHandlers(outPath) {
-  process.on('SIGINT', () => finalizeAndExit(outPath, 'SIGINT (Ctrl+C)', 130));
-  process.on('SIGTERM', () => finalizeAndExit(outPath, 'SIGTERM', 143));
-
-  process.on('uncaughtException', (err) => {
-    runState.failures.push({
-      type: 'uncaughtException',
-      message: String(err?.message ?? err),
-      stack: String(err?.stack ?? ''),
-      when: formatISO(new Date()),
-    });
-    finalizeAndExit(outPath, 'uncaughtException', 1);
-  });
-
-  process.on('unhandledRejection', (reason) => {
-    runState.failures.push({
-      type: 'unhandledRejection',
-      message: String(reason?.message ?? reason),
-      stack: String(reason?.stack ?? ''),
-      when: formatISO(new Date()),
-    });
-    finalizeAndExit(outPath, 'unhandledRejection', 1);
-  });
-}
-
-/* -------------------- main -------------------- */
-
-async function main() {
-  const categoriesPath = path.resolve(process.cwd(), CATEGORIES_DIR);
-  const outPath = path.resolve(process.cwd(), OUT_DIR);
-
-  registerExitHandlers(outPath);
+  const categoriesPath = path.resolve(process.cwd(), cfg.categoriesDir);
+  const outPath = path.resolve(process.cwd(), cfg.outDir);
 
   if (!fs.existsSync(categoriesPath)) {
-    throw new Error(`Missing folder: ${categoriesPath}`);
+    throw new Error(`Missing categories folder: ${categoriesPath}`);
   }
-
   if (!fs.existsSync(outPath)) {
     fs.mkdirSync(outPath, { recursive: true });
   }
@@ -477,198 +373,176 @@ async function main() {
     throw new Error(`No .csv files found in ${categoriesPath}`);
   }
 
-  const columns = [
-    'subtree_id',
-    'subtree_name',
-    'category_id',
-    'category_name',
-    'category_path',
-    'item_id',
-    'name',
-    'msrp',
-    'retail_price',
-    'upc',
-    'shortDescription',
-    'longDescription',
-    'brandName',
-    'thumbnailImage',
-    'mediumImage',
-    'largeImage',
-    'color',
-    'customerRating',
-    'stock',
-    'productTrackingUrl',
-    'categoryNode',
-  ];
+  const runState = {
+    startedAt: new Date(),
+    endedAt: null,
+    exitReason: 'completed',
+    subtreeFilesProcessed: 0,
+    categoryRowsAttempted: 0,
+    categoryRowsSucceeded: 0,
+    categoryRowsFailed: 0,
+    failures: [],
+  };
 
   const masterFile = path.join(outPath, 'ALL_SUBTREES_PRODUCTS.csv');
   const masterStream = fs.createWriteStream(masterFile, { encoding: 'utf8' });
-  masterStreamRef = masterStream;
-  masterStream.write(csvHeader(columns));
+  masterStream.write(csvHeader());
 
-  const seenMaster = DEDUPE_MASTER ? new Set() : null;
+  const seenMaster = cfg.dedupeMaster ? new Set() : null;
   let masterCount = 0;
 
-  for (const file of subtreeFiles) {
-    const subtreeCsvPath = path.join(categoriesPath, file);
-    const text = fs.readFileSync(subtreeCsvPath, 'utf8');
+  try {
+    for (const file of subtreeFiles) {
+      const subtreeCsvPath = path.join(categoriesPath, file);
+      const text = fs.readFileSync(subtreeCsvPath, 'utf8');
+      const parsed = parseCSV(text);
+      const objsRaw = rowsToObjects(parsed);
 
-    const parsed = parseCSV(text);
-    const objsRaw = rowsToObjects(parsed);
+      if (!objsRaw.length) continue;
 
-    if (!objsRaw.length) {
-      continue;
-    }
-
-    const root = pickSubtreeRoot(objsRaw);
-    const subtree_name = root?.name ?? path.basename(file, '.csv');
-    const subtree_id = root?.id ?? '';
-
-    const subtreeLabel = sanitizeFilename(
-      `${subtree_name}_${subtree_id || 'unknown'}`,
-    );
-
-    // Subtree aggregate CSV
-    const subtreeAggFile = path.join(outPath, `${subtreeLabel}__ALL.csv`);
-    const subtreeAggStream = fs.createWriteStream(subtreeAggFile, {
-      encoding: 'utf8',
-    });
-    subtreeAggStream.write(csvHeader(columns));
-
-    const seenSubtreeAgg = DEDUPE_WITHIN_SUBTREE_AGG ? new Set() : null;
-    let subtreeAggCount = 0;
-
-    const rows = objsRaw
-      .map((o) => ({
-        id: String(o.id ?? '').trim(),
-        name: String(o.name ?? '').trim(),
-        path: String(o.path ?? '').trim(),
-      }))
-      .filter((o) => o.id && o.name);
-
-    for (const row of rows) {
-      const parent = isParentRow(rows, row);
-
-      if (!EXPORT_PARENT_ROWS_TOO && parent) {
-        continue;
-      }
-
-      runState.categoryRowsAttempted++;
-
-      await sleep(CATEGORY_DELAY_MS);
-
-      let items;
-      try {
-        items = await fetchAllItemsForCategory(row.id);
-        runState.categoryRowsSucceeded++;
-      } catch (e) {
-        runState.categoryRowsFailed++;
-
-        runState.failures.push({
-          type: 'categoryFetchFailed',
-          subtreeFile: file,
-          subtreeName: subtree_name,
-          subtreeId: subtree_id,
-          categoryId: row.id,
-          categoryName: row.name,
-          categoryPath: row.path,
-          message: String(e?.message ?? e),
-          httpStatus: e?.httpStatus ?? null,
-          url: e?.url ?? null,
-          responseBody: e?.responseBody ?? null,
-          stack: String(e?.stack ?? ''),
-          when: formatISO(new Date()),
-        });
-
-        console.error(`Failed category ${row.id} (${row.name}): ${e.message}`);
-        continue;
-      }
-
-      const categoryLabel = sanitizeFilename(
-        `${subtree_name}_${subtree_id}__${row.name}_${row.id}`,
+      const root = pickSubtreeRoot(objsRaw);
+      const subtree_name = root?.name ?? path.basename(file, '.csv');
+      const subtree_id = root?.id ?? '';
+      const subtreeLabel = sanitizeFilename(
+        `${subtree_name}_${subtree_id || 'unknown'}`,
       );
-      const categoryFile = path.join(outPath, `${categoryLabel}.csv`);
-      const categoryStream = fs.createWriteStream(categoryFile, {
+
+      const subtreeAggFile = path.join(outPath, `${subtreeLabel}__ALL.csv`);
+      const subtreeAggStream = fs.createWriteStream(subtreeAggFile, {
         encoding: 'utf8',
       });
-      categoryStream.write(csvHeader(columns));
+      subtreeAggStream.write(csvHeader());
 
-      const seenCategory = DEDUPE_WITHIN_EACH_CATEGORY_CSV ? new Set() : null;
-      let categoryCount = 0;
+      const seenSubtreeAgg = cfg.dedupeWithinSubtree ? new Set() : null;
+      let subtreeAggCount = 0;
 
-      for (const item of items) {
-        const itemId = String(item?.itemId ?? '');
-        if (!itemId) continue;
+      const rows = objsRaw
+        .map((o) => ({
+          id: String(o.id ?? '').trim(),
+          name: String(o.name ?? '').trim(),
+          path: String(o.path ?? '').trim(),
+        }))
+        .filter((o) => o.id && o.name);
 
-        if (seenCategory) {
-          if (seenCategory.has(itemId)) continue;
-          seenCategory.add(itemId);
+      for (const row of rows) {
+        if (!cfg.exportParentRows && isParentRow(rows, row)) continue;
+
+        runState.categoryRowsAttempted++;
+        await sleep(cfg.categoryDelayMs);
+
+        let items;
+        try {
+          items = await fetchAllItemsForCategory(row.id, creds, cfg);
+          runState.categoryRowsSucceeded++;
+        } catch (e) {
+          runState.categoryRowsFailed++;
+          runState.failures.push({
+            type: 'categoryFetchFailed',
+            subtreeFile: file,
+            subtreeName: subtree_name,
+            categoryId: row.id,
+            categoryName: row.name,
+            categoryPath: row.path,
+            message: String(e?.message ?? e),
+            httpStatus: e?.httpStatus ?? null,
+            url: e?.url ?? null,
+            responseBody: e?.responseBody ?? null,
+            when: formatISO(new Date()),
+          });
+          console.error(
+            `Failed category ${row.id} (${row.name}): ${e.message}`,
+          );
+          continue;
         }
 
-        const outRow = itemToRow(item, {
-          subtree_id,
-          subtree_name,
-          category_id: row.id,
-          category_name: row.name,
-          category_path: row.path,
+        const categoryLabel = sanitizeFilename(
+          `${subtree_name}_${subtree_id}__${row.name}_${row.id}`,
+        );
+        const categoryFile = path.join(outPath, `${categoryLabel}.csv`);
+        const categoryStream = fs.createWriteStream(categoryFile, {
+          encoding: 'utf8',
         });
+        categoryStream.write(csvHeader());
 
-        // Per-category CSV
-        categoryStream.write(rowToCSVLine(outRow, columns));
-        categoryCount++;
+        const seenCategory = cfg.dedupeWithinCategory ? new Set() : null;
+        let categoryCount = 0;
 
-        // Subtree aggregate (dedup optional)
-        if (seenSubtreeAgg) {
-          if (!seenSubtreeAgg.has(itemId)) {
-            seenSubtreeAgg.add(itemId);
-            subtreeAggStream.write(rowToCSVLine(outRow, columns));
+        for (const item of items) {
+          const itemId = String(item?.itemId ?? '');
+          if (!itemId) continue;
+
+          if (seenCategory) {
+            if (seenCategory.has(itemId)) continue;
+            seenCategory.add(itemId);
+          }
+
+          const outRow = itemToRow(item, {
+            subtree_name,
+            category_id: row.id,
+            category_name: row.name,
+            category_path: row.path,
+          });
+
+          categoryStream.write(rowToCSVLine(outRow));
+          categoryCount++;
+
+          if (seenSubtreeAgg) {
+            if (!seenSubtreeAgg.has(itemId)) {
+              seenSubtreeAgg.add(itemId);
+              subtreeAggStream.write(rowToCSVLine(outRow));
+              subtreeAggCount++;
+            }
+          } else {
+            subtreeAggStream.write(rowToCSVLine(outRow));
             subtreeAggCount++;
           }
-        } else {
-          subtreeAggStream.write(rowToCSVLine(outRow, columns));
-          subtreeAggCount++;
-        }
 
-        // Master (dedup optional)
-        if (seenMaster) {
-          if (!seenMaster.has(itemId)) {
-            seenMaster.add(itemId);
-            masterStream.write(rowToCSVLine(outRow, columns));
+          if (seenMaster) {
+            if (!seenMaster.has(itemId)) {
+              seenMaster.add(itemId);
+              masterStream.write(rowToCSVLine(outRow));
+              masterCount++;
+            }
+          } else {
+            masterStream.write(rowToCSVLine(outRow));
             masterCount++;
           }
-        } else {
-          masterStream.write(rowToCSVLine(outRow, columns));
-          masterCount++;
+        }
+
+        await new Promise((resolve) => categoryStream.end(resolve));
+        if (categoryCount > 0) {
+          console.log(
+            `Wrote ${path.basename(categoryFile)} (${categoryCount} rows)`,
+          );
         }
       }
 
-      await new Promise((resolve) => categoryStream.end(resolve));
-
-      if (categoryCount != 0) {
-        console.log(
-          `Wrote category CSV: ${path.basename(categoryFile)} (${categoryCount} rows)`,
-        );
-      }
+      await new Promise((resolve) => subtreeAggStream.end(resolve));
+      runState.subtreeFilesProcessed++;
+      console.log(
+        `Wrote ${path.basename(subtreeAggFile)} (${subtreeAggCount} rows)`,
+      );
     }
-
-    await new Promise((resolve) => subtreeAggStream.end(resolve));
-
-    runState.subtreeFilesProcessed++;
-
-    console.log(
-      `Wrote subtree aggregate CSV: ${path.basename(subtreeAggFile)} (${subtreeAggCount} rows)`,
-    );
+  } finally {
+    await new Promise((resolve) => masterStream.end(resolve));
+    runState.endedAt = new Date();
+    writeRunLog(outPath, runState);
   }
 
-  await new Promise((resolve) => masterStream.end(resolve));
-  console.log(
-    `Wrote master CSV: ${path.basename(masterFile)} (${masterCount} rows)`,
-  );
+  console.log(`Wrote ${path.basename(masterFile)} (${masterCount} rows)`);
 
-  finalizeAndExit(outPath, 'completed', 0);
+  return {
+    subtreeFilesProcessed: runState.subtreeFilesProcessed,
+    categoryRowsAttempted: runState.categoryRowsAttempted,
+    categoryRowsSucceeded: runState.categoryRowsSucceeded,
+    categoryRowsFailed: runState.categoryRowsFailed,
+  };
 }
 
-main().catch((err) => {
-  console.error(err);
-  finalizeAndExit(path.resolve(process.cwd(), OUT_DIR), 'main() catch', 1);
-});
+// run directly if called as a script (not imported)
+if (process.argv[1] === __filename) {
+  run().catch((err) => {
+    console.error(err.message ?? err);
+    process.exit(1);
+  });
+}
