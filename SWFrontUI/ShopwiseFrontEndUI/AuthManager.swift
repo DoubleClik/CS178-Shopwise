@@ -68,6 +68,7 @@ final class AuthManager: ObservableObject {
     @Published var errorMessage: String? = nil
     @Published var isSignedIn: Bool = false
     @Published var userEmail: String? = nil
+    @Published var userID: String? = nil
 
     // Tokens
     private(set) var accessToken: String? = nil
@@ -114,6 +115,7 @@ final class AuthManager: ObservableObject {
             let session = try JSONDecoder().decode(SupabaseSession.self, from: data)
             self.applySession(session)
             self.userEmail = email
+            self.userID = session.user?.id
         }
     }
     
@@ -148,6 +150,7 @@ final class AuthManager: ObservableObject {
                !session.access_token.isEmpty {
                 self.applySession(session)
                 self.userEmail = email
+                self.userID = session.user?.id
             } else {
                 self.userEmail = email
                 throw AuthError.emailConfirmationRequired
@@ -198,11 +201,13 @@ final class AuthManager: ObservableObject {
             let user = try JSONDecoder().decode(SupabaseUser.self, from: data)
             self.userEmail = user.email
             self.isSignedIn = true
+            self.userID = user.id
         } catch {
             // token might be expired -> try refresh
             if let refreshed = try? await refreshSession() {
                 self.userEmail = refreshed.user?.email
                 self.isSignedIn = true
+                self.userID = refreshed.user?.id
             } else {
                 clearSession()
             }
@@ -250,6 +255,7 @@ final class AuthManager: ObservableObject {
     private func applySession(_ session: SupabaseSession) {
         self.accessToken = session.access_token
         self.refreshToken = session.refresh_token
+        self.userID = session.user?.id
         saveTokensToStorage()
         self.isSignedIn = true
     }
@@ -258,6 +264,7 @@ final class AuthManager: ObservableObject {
         self.accessToken = nil
         self.refreshToken = nil
         self.userEmail = nil
+        self.userID = nil
         self.isSignedIn = false
         deleteTokensFromStorage()
     }
@@ -266,7 +273,8 @@ final class AuthManager: ObservableObject {
         url: URL,
         method: String,
         jsonBody: T?,
-        bearerToken: String?
+        bearerToken: String?,
+        extraHeaders: [String: String] = [:]
     ) async throws -> (Data, HTTPURLResponse) {
 
         var req = URLRequest(url: url)
@@ -278,6 +286,10 @@ final class AuthManager: ObservableObject {
             req.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
         }
 
+        for (key, value) in extraHeaders {
+            req.setValue(value, forHTTPHeaderField: key)
+        }
+        
         if let jsonBody {
             req.httpBody = try JSONEncoder().encode(jsonBody)
         }
@@ -410,5 +422,87 @@ extension AuthManager {
         )
 
         return try JSONDecoder().decode([WalmartItem].self, from: data)
+    }
+}
+
+//Onboard survey fetch/save 
+struct UserPreferencesRow: Codable {
+    let user_id: String
+    let diet_preferences: [String]
+    let allergies: [String]
+}
+
+struct UserPreferencesUpsertBody: Codable {
+    let user_id: String
+    let diet_preferences: [String]
+    let allergies: [String]
+}
+
+extension AuthManager {
+    func fetchUserPreferences() async throws -> UserPreferences? {
+        guard let token = accessToken, let uid = userID else {
+            throw URLError(.userAuthenticationRequired)
+        }
+
+        let base = supabaseURL
+            .appendingPathComponent("rest/v1")
+            .appendingPathComponent("user_preferences")
+
+        var comps = URLComponents(url: base, resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            URLQueryItem(name: "select", value: "user_id,diet_preferences,allergies"),
+            URLQueryItem(name: "user_id", value: "eq.\(uid)"),
+            URLQueryItem(name: "limit", value: "1")
+        ]
+
+        guard let url = comps.url else { throw URLError(.badURL) }
+
+        let (data, _) = try await request(
+            url: url,
+            method: "GET",
+            jsonBody: Optional<String>.none,
+            bearerToken: token
+        )
+
+        let rows = try JSONDecoder().decode([UserPreferencesRow].self, from: data)
+        guard let row = rows.first else { return nil }
+
+        return UserPreferences(
+            dietPreferences: row.diet_preferences,
+            allergies: row.allergies
+        )
+    }
+
+    func saveUserPreferences(_ preferences: UserPreferences) async throws {
+        guard let token = accessToken, let uid = userID else {
+            throw URLError(.userAuthenticationRequired)
+        }
+
+        let base = supabaseURL
+            .appendingPathComponent("rest/v1")
+            .appendingPathComponent("user_preferences")
+
+        var comps = URLComponents(url: base, resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            URLQueryItem(name: "on_conflict", value: "user_id")
+        ]
+
+        guard let url = comps.url else { throw URLError(.badURL) }
+
+        let body = UserPreferencesUpsertBody(
+            user_id: uid,
+            diet_preferences: preferences.dietPreferences,
+            allergies: preferences.allergies
+        )
+
+        _ = try await request(
+            url: url,
+            method: "POST",
+            jsonBody: body,
+            bearerToken: token,
+            extraHeaders: [
+                "Prefer": "resolution=merge-duplicates,return=representation"
+            ]
+        )
     }
 }
