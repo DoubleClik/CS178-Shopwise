@@ -39,6 +39,10 @@ final class CartStore: ObservableObject {
         add(id: ingredient.id, name: ingredient.name, unit: ingredient.unit, price: ingredient.price)
     }
 
+    func add(name: String, unit: String, price: Double) {
+        add(id: name, name: name, unit: unit, price: price)
+    }
+
     func add(id: String, name: String, unit: String, price: Double) {
         if let idx = items.firstIndex(where: { $0.id == id }) {
             items[idx].quantity += 1
