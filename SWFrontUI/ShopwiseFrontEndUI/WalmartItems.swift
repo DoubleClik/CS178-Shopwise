@@ -18,4 +18,3 @@ struct WalmartItem: Identifiable, Decodable {
     let largeImage: String?
     let color: String?
 }
-

@@ -10,17 +10,48 @@ import SwiftUI
 struct AuthGateView: View {
     @EnvironmentObject var auth: AuthManager
 
+    @State private var isCheckingPreferences = false
+    @State private var hasCompletedOnboarding = false
+
     var body: some View {
         Group {
-            if auth.isSignedIn {
+            if !auth.isSignedIn {
+                AuthView()
+            } else if isCheckingPreferences {
+                ProgressView("Loading...")
+            } else if hasCompletedOnboarding {
                 ContentView()
             } else {
-                AuthView()
+                NavigationStack {
+                    OnboardingSurveyView {
+                        hasCompletedOnboarding = true
+                    }
+                }
             }
         }
         .task {
-            // Restore session if tokens exist
             await auth.restoreSession()
+        }
+        .task(id: auth.isSignedIn) {
+            await checkOnboardingStatus()
+        }
+    }
+
+    private func checkOnboardingStatus() async {
+        guard auth.isSignedIn else {
+            hasCompletedOnboarding = false
+            isCheckingPreferences = false
+            return
+        }
+
+        isCheckingPreferences = true
+        defer { isCheckingPreferences = false }
+
+        do {
+            let prefs = try await auth.fetchUserPreferences()
+            hasCompletedOnboarding = (prefs != nil)
+        } catch {
+            hasCompletedOnboarding = false
         }
     }
 }

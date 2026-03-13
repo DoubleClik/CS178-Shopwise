@@ -3,13 +3,13 @@ import Combine
 
 // Simple cart line item model (separate from your SwiftData Item model)
 struct CartLineItem: Identifiable, Hashable {
-    let id: UUID
+    let id: String
     let name: String
     let unit: String
     let price: Double
     var quantity: Int
 
-    init(id: UUID = UUID(), name: String, unit: String, price: Double, quantity: Int = 1) {
+    init(id: String = String(), name: String, unit: String, price: Double, quantity: Int = 1) {
         self.id = id
         self.name = name
         self.unit = unit
@@ -23,7 +23,6 @@ struct CartLineItem: Identifiable, Hashable {
 final class CartStore: ObservableObject {
     @Published private(set) var items: [CartLineItem] = []
 
-    //amount of cart items
     var itemCount: Int {
         items.reduce(0) { $0 + $1.quantity }
     }
@@ -32,11 +31,27 @@ final class CartStore: ObservableObject {
         items.reduce(0) { $0 + $1.lineTotal }
     }
 
-    func add(name: String, unit: String, price: Double) {
-        if let idx = items.firstIndex(where: { $0.name == name && $0.unit == unit && $0.price == price }) {
+    func add(product: Product) {
+        add(id: product.id, name: product.name, unit: product.unit, price: product.price)
+    }
+
+    func add(ingredient: Ingredient) {
+        add(id: ingredient.id, name: ingredient.name, unit: ingredient.unit, price: ingredient.price)
+    }
+
+    func add(id: String, name: String, unit: String, price: Double) {
+        if let idx = items.firstIndex(where: { $0.id == id }) {
             items[idx].quantity += 1
         } else {
-            items.append(CartLineItem(name: name, unit: unit, price: price))
+            items.append(
+                CartLineItem(
+                    id: id,
+                    name: name,
+                    unit: unit,
+                    price: price,
+                    quantity: 1
+                )
+            )
         }
     }
 
