@@ -39,6 +39,7 @@ function opt(prefix, def) {
 const runAll = flag('--all');
 const runWalmart = flag('--walmart') || runAll;
 const runKroger = flag('--kroger') || runAll;
+const runReclassify = flag('--reclassify'); // re-run classifier on existing walmart_CSVs without re-fetching
 const isDryRun = flag('--dry-run');
 const useLLM = flag('--llm');
 const continueErr = flag('--continue-on-error');
@@ -140,6 +141,9 @@ const STAGES = [
 function selectStages() {
   const validIds = new Set(STAGES.map((s) => s.id));
 
+  // --reclassify just re-runs the classifier on already-fetched CSVs
+  if (runReclassify) return STAGES.filter((s) => s.id === 'walmart:classify');
+
   // --stages=... takes priority if given
   if (stagesArg) {
     const requested = stagesArg
@@ -179,6 +183,7 @@ Usage:
 Flags:
   --all                  Run all stages (kroger:enrich skipped unless --zipcode given)
   --walmart              Run walmart:fetch and walmart:classify
+  --reclassify           Re-run walmart:classify on existing CSVs (skips the API fetch)
   --kroger               Run kroger:build (plus kroger:enrich if --zipcode is set)
   --stages=a,b,c         Pick specific stages by name, comma separated
   --zipcode=XXXXX        Zip code required for kroger:enrich

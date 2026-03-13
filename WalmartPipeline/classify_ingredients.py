@@ -19,6 +19,7 @@ kroger_catalogue.js - any changes here should be reflected there too.
 
 import csv
 import json
+import re
 import time
 import argparse
 import urllib.request
@@ -44,7 +45,19 @@ NON_INGREDIENT_KEYWORDS = {
     "tv dinner", "microwave meal", "microwave popcorn", "heat and serve",
     "ready to eat", "ready-to-eat", "meal kit", "dinner kit", "lunch kit",
     "skillet meal", "hamburger helper", "tuna helper",
-    "mac and cheese dinner", "boxed dinner",
+    "mac and cheese dinner", "boxed dinner", "gumbo mix", "protein bowl",
+    # Cocktail / bar mixers
+    "cocktail syrup", "margarita mix", "craft mixer", "cocktail mixer",
+    # Gift sets / care packages (multi-product bundles, not ingredients)
+    "gift set", "gift basket", "gift box", "gift tower", "care package", "snack care package",
+    # Drink mixes / powdered beverages
+    "drink mix", "powdered drink", "kool-aid", "crystal light",
+    # Pancake / table syrup (condiment, not a cooking ingredient)
+    "pancake syrup", "table syrup", "maple flavored syrup",
+    # Instant noodles / ramen cups (complete meals)
+    "instant noodle", "ramen noodle soup", "cup noodle", "cup of noodle",
+    # Cake / cupcake toppers (decorative plastic/acrylic, not food)
+    "cake topper", "cake toppers", "cupcake topper", "cupcake toppers",
     # Snack foods
     "potato chip", "tortilla chip", "corn chip", "pita chip",
     "cheese puff", "cheese curl", "veggie straw", "veggie chip",
@@ -56,22 +69,54 @@ NON_INGREDIENT_KEYWORDS = {
     "candy bar", "chocolate bar", "candy bag", "hard candy",
     "lollipop", "jawbreaker", "licorice", "taffy", "cotton candy",
     # Beverages
-    "soda", " cola", "ginger ale", "root beer", "cream soda",
+    "soda", "cola", "ginger ale", "root beer", "cream soda",
     "energy drink", "sports drink", "electrolyte drink",
     "fruit juice", "orange juice", "apple juice", "grape juice",
     "cranberry juice", "pineapple juice", "tomato juice",
     "lemonade", "limeade", "fruit punch",
-    "iced tea", "sweet tea", "kombucha",
+    "iced tea", "sweet tea", "diet tea", "bottled tea", "lemon tea", "leaf tea", "tea bag",
+    "yerba mate", "kombucha",
     "coffee drink", "bottled coffee", "cold brew bottle", "frappuccino",
-    "smoothie bottle", "juice smoothie", "drinkable yogurt",
+    "smoothie bottle", "juice smoothie", "drinkable yogurt", "dairy drink", "yogurt drink",
     "protein shake", "meal replacement shake",
     "sparkling water", "mineral water", "bottled water", "distilled water",
     "flavored water", "vitamin water", "coconut water bottle",
-    "beer ", " beer", "wine bottle", "spirits bottle", "whiskey bottle",
+    "beer", "wine bottle", "spirits bottle", "whiskey bottle",
     "vodka bottle", "rum bottle", "gin bottle", "tequila bottle",
     "hard seltzer", "hard cider",
+    "cold brew concentrate",
+    # Coffee pods / capsules / flavored coffees (not cooking ingredients)
+    "k-cup", "k cup", "coffee pod", "coffee capsule", "coffee single serve", "flavored coffee",
+    # General capsules (supplement capsules, espresso machine capsules, etc.)
+    "capsule", "softgel", "caplet",
+    # Candles (birthday candles, numeral candles, decorative - not food)
+    "candle",
+    # Clothing / merchandise
+    "hoodie", "sweatshirt", "t-shirt", "tote bag", "pullover shirt",
+    # Prepared soups (ready-to-eat, not cooking-ingredient condensed soups)
+    "chunky soup", "slow simmered soup", "chef boyardee", "chunky chili",
+    # Breakfast sandwiches and similar prepared foods (both forms since plural is irregular)
+    "breakfast sandwich", "breakfast sandwiches", "breakfast burrito", "biscuit sandwich",
+    # Snack jerky (not a cooking ingredient)
+    "jerky",
+    # Trail mix (snack, not an ingredient)
+    "trail mix",
+    # Pretzel snacks (pieces, bites, etc. — not a raw ingredient)
+    "pretzel",
+    # Flavored drink syrups (Torani, Monin etc. — for coffee drinks, not cooking)
+    "drink syrup", "coffee syrup", "flavored syrup",
+    # Snack packs / mini cookie packs
+    "snack pack",
+    # Pop-tarts and similar pastry snacks
+    "pop tarts", "pop-tart",
+    # Tea formats that slip past "tea bag" (pyramid sachets, loose leaf tins)
+    "pyramid sachet", "loose tea", "pyramid tea",
+    # Cake decoration companies / party supply decorations
+    "decopac", "wedding topper", "party topper",
+    # Non-food merchandise / signs
+    "banner", "yard sign", "signage",
     # Candy / confections
-    "candy", "confection", "breath mint", "chewing gum", " gum ", "bubble gum",
+    "candy", "confection", "marshmallow", "breath mint", "chewing gum", "gum", "bubble gum",
     # Breakfast cereals
     "breakfast cereal", "corn flakes", "frosted flakes", "fruit loops",
     "froot loops", "lucky charms", "cocoa puffs", "cap'n crunch",
@@ -87,10 +132,8 @@ NON_INGREDIENT_KEYWORDS = {
     "croissant pack", "cinnamon roll pack",
     "brownie pack", "cookie pack", "cookie assortment",
     "pudding cup", "jello cup", "gelatin cup", "snack pudding",
-    # Supplements / vitamins
-    "vitamin c", "vitamin d", "vitamin e", "vitamin a", "vitamin b",
+    # Supplements / vitamins (single-letter vitamin keywords removed - too broad, catch fortified foods)
     "multivitamin", "supplement", "probiotic", "prebiotic",
-    "fish oil capsule", "omega-3 capsule",
     "protein powder", "whey protein", "casein protein",
     "plant protein powder", "creatine", "bcaa", "pre-workout",
     "melatonin", "sleep aid", "fiber supplement", "metamucil",
@@ -133,6 +176,25 @@ NON_INGREDIENT_CATEGORIES = {
     "deli prepared", "deli meals",
 }
 
+# Checked BEFORE INGREDIENT_RULES to fix tag conflicts caused by rule ordering.
+# E.g. "blueberry yogurt" hits PRODUCE before DAIRY without this, "coffee with cardamom"
+# hits SPICE, packaged "pie filling" hits PRODUCE.
+PRIORITY_INGREDIENT_CHECKS: list[tuple[set[str], list[str]]] = [
+    ({"yogurt", "kefir"}, ["DAIRY"]),
+    ({"pie filling"}, ["OTHER_INGR"]),
+    ({
+        "ground coffee", "coffee bean", "coffee grounds", "roasted coffee",
+        "instant coffee", "espresso powder", "espresso bean", "coffee powder",
+    }, ["OTHER_INGR"]),
+    # Nuts/seeds with flavor modifiers (e.g. "sea salt") hit SPICE before NUT_SEED
+    ({
+        "cashews", "almonds", "peanuts", "walnuts", "pecans", "pistachios",
+        "hazelnuts", "macadamia", "sunflower seeds", "pumpkin seeds", "pepitas",
+    }, ["NUT_SEED"]),
+    # Ham products hit PRODUCE when "apple" appears in "applewood smoked ham"
+    ({"smoked ham", "spiral ham", "whole ham", "applewood smoked"}, ["PROTEIN"]),
+]
+
 # Ingredient rules - format is (keyword set, [tags to assign]).
 # Synced with the search terms in kroger_catalogue.js FOOD_CATEGORIES.
 # Kroger terms come first (marked "canonical"), then Walmart-specific variants.
@@ -169,7 +231,7 @@ INGREDIENT_RULES: list[tuple[set[str], list[str]]] = [
         "fennel bulb", "jicama", "okra",
         "yam", "fingerling potato", "fresh corn", "corn on the cob",
         "sugar snap", "eggplant",
-        "grapefruit", "honeydew", "apricot", "fig", "passion fruit",
+        "grapefruit", "honeydew", "apricot", "fresh fig", "passion fruit",
     }, ["PRODUCE"]),
 
     # --- FRESH_HERB ---
@@ -406,20 +468,7 @@ INGREDIENT_RULES: list[tuple[set[str], list[str]]] = [
         "rotel",
     }, ["CANNED_GOOD"]),
 
-    # --- SWEETENER ---
-    ({
-        # Kroger search terms (canonical)
-        "honey", "raw honey", "manuka honey",
-        "maple syrup", "pure maple syrup",
-        "agave nectar", "date syrup",
-        "stevia", "monk fruit sweetener", "erythritol",
-        # Walmart-specific variants
-        "clover honey",
-        "agave",
-        "date sugar", "brown rice syrup",
-    }, ["SWEETENER"]),
-
-    # --- NUT_SEED ---
+    # --- NUT_SEED --- (before SWEETENER so "honey roasted cashews" tags as NUT_SEED not SWEETENER)
     ({
         # Kroger search terms (canonical)
         "raw almonds", "sliced almonds", "slivered almonds",
@@ -433,6 +482,19 @@ INGREDIENT_RULES: list[tuple[set[str], list[str]]] = [
         "walnuts", "peanut", "raw peanut", "roasted peanut",
         "ground flax",
     }, ["NUT_SEED"]),
+
+    # --- SWEETENER ---
+    ({
+        # Kroger search terms (canonical)
+        "honey", "raw honey", "manuka honey",
+        "maple syrup", "pure maple syrup",
+        "agave nectar", "date syrup",
+        "stevia", "monk fruit sweetener", "erythritol",
+        # Walmart-specific variants
+        "clover honey",
+        "agave",
+        "date sugar", "brown rice syrup",
+    }, ["SWEETENER"]),
 
     # --- THICKENER ---
     ({
@@ -516,14 +578,33 @@ def rule_classify(row: dict) -> dict | None:
     name     = normalise(row.get("name", ""))
     category = normalise(row.get("category_name", ""))
     combined = name + " " + category
+    # Strip punctuation so "cake topper," or "Coffee-" still match keyword boundaries
+    clean  = re.sub(r'[^\w\s]', ' ', combined)
+    padded = f" {clean} "
 
-    # Pass 1a: explicit non-ingredient keywords
+    # Pass 1a: non-ingredient keywords - padded so brand names like "FirstChoiceCandy"
+    # don't trigger on the substring "candy". Also check plural form ({kw}s) so
+    # "tea bags", "energy bars", "cake toppers" etc. match alongside the singular.
     for kw in NON_INGREDIENT_KEYWORDS:
-        if kw in combined:
+        if f" {kw} " in padded or f" {kw}s " in padded:
             return {"ingredient": False, "classifiers": []}
     for cat_kw in NON_INGREDIENT_CATEGORIES:
         if cat_kw in category:
             return {"ingredient": False, "classifiers": []}
+
+    # Catch mint/breath-freshener candy products that slip through because a spice or
+    # produce keyword (e.g. "cinnamon", "strawberry") fires before the non-ingredient
+    # check can see that the product is a candy mint.
+    if any(k in name for k in ("breath mint", "sugar free mint", "sugar-free mint",
+                                "mint tin", "mints bulk", "mint candy")):
+        return {"ingredient": False, "classifiers": []}
+
+    # Priority ingredient checks - run before INGREDIENT_RULES to fix ordering conflicts
+    # (e.g. "blueberry yogurt" would match PRODUCE before DAIRY without this)
+    for keywords, tags in PRIORITY_INGREDIENT_CHECKS:
+        for kw in keywords:
+            if kw in combined:
+                return {"ingredient": True, "classifiers": tags}
 
     # Pass 1b: explicit ingredient keywords
     for keywords, tags in INGREDIENT_RULES:
