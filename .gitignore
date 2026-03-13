@@ -10,3 +10,9 @@ classified_ingredients.csv
 /kroger_output
 .DS_Store
 node_modules/
+
+# Xcode user-specific files
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.moved-aside
