@@ -17,4 +17,5 @@ struct WalmartItem: Identifiable, Decodable {
     let mediumImage: String?
     let largeImage: String?
     let color: String?
+    let descriptionText: String?
 }
