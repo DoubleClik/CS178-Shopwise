@@ -506,3 +506,38 @@ extension AuthManager {
         )
     }
 }
+
+// --- Recpie Fetcher --- //
+
+extension AuthManager {
+    func fetchRecipes(search: String? = nil, limit: Int = 50, offset: Int = 0) async throws -> [RecipeRow] {
+        let base = supabaseURL
+            .appendingPathComponent("rest/v1/Recipes_Kaggle")
+
+        var comps = URLComponents(url: base, resolvingAgainstBaseURL: false)!
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(
+                name: "select",
+                value: "id,Title,Ingredients,Instructions,Image_Name,Cleaned_Ingredients,image_url"
+            ),
+            URLQueryItem(name: "limit", value: "\(limit)"),
+            URLQueryItem(name: "offset", value: "\(offset)"),
+            URLQueryItem(name: "order", value: "id.asc")
+        ]
+
+        if let s = search?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            queryItems.append(URLQueryItem(name: "Title", value: "ilike.*\(s)*"))
+        }
+
+        comps.queryItems = queryItems
+
+        let (data, _) = try await request(
+            url: comps.url!,
+            method: "GET",
+            jsonBody: Optional<String>.none,
+            bearerToken: accessToken
+        )
+
+        return try JSONDecoder().decode([RecipeRow].self, from: data)
+    }
+}
