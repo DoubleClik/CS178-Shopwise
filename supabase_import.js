@@ -48,7 +48,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 // Used for comma-separated classifiers and semicolon-separated store IDs/prices.
 function split(s, sep) {
   if (!s) return [];
-  return s.split(sep).map((x) => x.trim()).filter(Boolean);
+  return s
+    .split(sep)
+    .map((x) => x.trim())
+    .filter(Boolean);
 }
 
 // Returns a float or null — null means the field was empty/unparseable,
@@ -83,7 +86,10 @@ async function insertBatch(table, rows, dryRun) {
 // Rows missing a name or price are skipped since both are NOT NULL in the table.
 
 export async function importWalmart({ dryRun = false } = {}) {
-  const file = path.join(__dirname, 'WalmartPipeline/classified_ingredients.csv');
+  const file = path.join(
+    __dirname,
+    'WalmartPipeline/classified_ingredients.csv',
+  );
   console.log(`\n  Source: ${file}`);
 
   let batch = [];
@@ -97,7 +103,9 @@ export async function importWalmart({ dryRun = false } = {}) {
     await insertBatch(TABLE_WALMART, batch, dryRun);
     totalInserted += batch.length;
     batch = [];
-    process.stdout.write(`\r  Inserted ${totalInserted.toLocaleString()} rows...`);
+    process.stdout.write(
+      `\r  Inserted ${totalInserted.toLocaleString()} rows...`,
+    );
   }
 
   for await (const row of csvParser(file)) {
@@ -133,8 +141,12 @@ export async function importWalmart({ dryRun = false } = {}) {
 
   console.log(`\n  Done.`);
   console.log(`    Inserted               : ${totalInserted.toLocaleString()}`);
-  console.log(`    Skipped (not ingredient): ${skippedNonIngredient.toLocaleString()}`);
-  console.log(`    Skipped (no name/price) : ${skippedMissingFields.toLocaleString()}`);
+  console.log(
+    `    Skipped (not ingredient): ${skippedNonIngredient.toLocaleString()}`,
+  );
+  console.log(
+    `    Skipped (no name/price) : ${skippedMissingFields.toLocaleString()}`,
+  );
 }
 
 // ── Kroger ────────────────────────────────────────────────────────────────────
@@ -144,7 +156,10 @@ export async function importWalmart({ dryRun = false } = {}) {
 // and store all the store IDs as an array.
 
 export async function importKroger({ dryRun = false } = {}) {
-  const file = path.join(__dirname, 'kroger_output/catalogue/food_catalogue.csv');
+  const file = path.join(
+    __dirname,
+    'kroger_output/catalogue/food_catalogue.csv',
+  );
   console.log(`\n  Source: ${file}`);
 
   let batch = [];
@@ -156,7 +171,9 @@ export async function importKroger({ dryRun = false } = {}) {
     await insertBatch(TABLE_KROGER, batch, dryRun);
     totalInserted += batch.length;
     batch = [];
-    process.stdout.write(`\r  Inserted ${totalInserted.toLocaleString()} rows...`);
+    process.stdout.write(
+      `\r  Inserted ${totalInserted.toLocaleString()} rows...`,
+    );
   }
 
   for await (const row of csvParser(file)) {
@@ -194,7 +211,9 @@ export async function importKroger({ dryRun = false } = {}) {
 
   console.log(`\n  Done.`);
   console.log(`    Inserted               : ${totalInserted.toLocaleString()}`);
-  console.log(`    Skipped (no name/price): ${skippedMissingFields.toLocaleString()}`);
+  console.log(
+    `    Skipped (no name/price): ${skippedMissingFields.toLocaleString()}`,
+  );
 }
 
 // ── Entry point (when run directly) ──────────────────────────────────────────
