@@ -22,6 +22,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { run as walmartFetch } from './WalmartPipeline/fetchProducts.js';
+import { importWalmart, importKroger } from './supabase_import.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -39,6 +40,7 @@ function opt(prefix, def) {
 const runAll = flag('--all');
 const runWalmart = flag('--walmart') || runAll;
 const runKroger = flag('--kroger') || runAll;
+const runSupabase = flag('--supabase') || runAll;
 const runReclassify = flag('--reclassify'); // re-run classifier on existing walmart_CSVs without re-fetching
 const isDryRun = flag('--dry-run');
 const useLLM = flag('--llm');
@@ -124,18 +126,19 @@ const STAGES = [
     },
   },
 
-  // --- Supabase import (TODO) ---
-  // When ready gotta:
-  //   1. npm install @supabase/supabase-js csv-parse
-  //   2. Add to .env:
-  //        SUPABASE_URL=https://<project-ref>.supabase.co
-  //        SUPABASE_SERVICE_KEY=<service-role-key>  (use the service key, not the anon key)
-  //   3. Create tables in Supabase matching the CSV headers.
-  //   4. Uncomment the block below.
-  //
-  // Tables to make:
-  //   walmart_products  (columns from classified_ingredients.csv)
-  //   kroger_products   (columns from food_catalogue.csv)
+  {
+    id: 'supabase:walmart',
+    label: 'Import Walmart ingredients into Supabase',
+    group: 'supabase',
+    run: () => importWalmart({ dryRun: isDryRun }),
+  },
+
+  {
+    id: 'supabase:kroger',
+    label: 'Import Kroger catalogue into Supabase',
+    group: 'supabase',
+    run: () => importKroger({ dryRun: isDryRun }),
+  },
 ];
 
 function selectStages() {
@@ -164,7 +167,7 @@ function selectStages() {
   return STAGES.filter((s) => {
     if (s.group === 'walmart' && !runWalmart) return false;
     if (s.group === 'kroger' && !runKroger) return false;
-    if (s.group === 'supabase') return false; // supabase stage must be explicitly requested via --stages
+    if (s.group === 'supabase' && !runSupabase) return false;
     return true;
   });
 }
@@ -193,6 +196,7 @@ Flags:
   --llm                  Enable Ollama LLM in walmart:classify (default: rules-only)
   --model=NAME           Ollama model (default: llama3.2:1b)
   --workers=N            Parallel LLM workers (default: 8)
+  --supabase             Run supabase:walmart and supabase:kroger
   --continue-on-error    Keep going after a stage fails instead of stopping
   --help, -h             Show this help text
 
