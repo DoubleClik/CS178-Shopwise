@@ -217,6 +217,7 @@ export async function importKroger({ dryRun = false } = {}) {
       size: row.size || '',
       // store_ids looks like "70400786;70400343" — split into an array
       store_id: split(row.store_ids, ';'),
+      search_keyword: row.search_keyword || null,
     });
 
     if (batch.length >= BATCH_SIZE) await flush();

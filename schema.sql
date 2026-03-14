@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS kroger_ingredients (
   classifiers TEXT[]      NOT NULL,
   image       TEXT,
   size        TEXT        NOT NULL,
-  store_id    TEXT[]      NOT NULL
+  store_id        TEXT[]      NOT NULL,
+  search_keyword  TEXT
 );
 
 CREATE INDEX IF NOT EXISTS kroger_ingredients_classifiers_idx
