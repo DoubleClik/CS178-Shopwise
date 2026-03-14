@@ -22,7 +22,11 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { run as walmartFetch } from './WalmartPipeline/fetchProducts.js';
-import { importWalmart, importKroger, importKrogerStores } from './supabase_import.js';
+import {
+  importWalmart,
+  importKroger,
+  importKrogerStores,
+} from './supabase_import.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -133,7 +137,11 @@ const STAGES = [
     group: 'kroger',
     run: () => {
       if (!zipcode) throw new Error('kroger:stores requires --zipcode=XXXXX');
-      return importKrogerStores({ zipcode, stores: parseInt(stores, 10), dryRun: isDryRun });
+      return importKrogerStores({
+        zipcode,
+        stores: parseInt(stores, 10),
+        dryRun: isDryRun,
+      });
     },
   },
 

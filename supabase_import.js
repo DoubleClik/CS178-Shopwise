@@ -40,7 +40,15 @@ const TABLE_STORES = 'kroger_locations';
 const KROGER_TOKEN_URL = 'https://api.kroger.com/v1/connect/oauth2/token';
 const KROGER_LOCATIONS_URL = 'https://api.kroger.com/v1/locations';
 
-const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const DAYS = [
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+  'sunday',
+];
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
   console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY in environment');
@@ -229,7 +237,9 @@ export async function importKroger({ dryRun = false } = {}) {
 // (instead of insert) means re-running is safe — it just refreshes the data.
 
 async function fetchKrogerToken(clientId, clientSecret) {
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
+    'base64',
+  );
   const res = await fetch(KROGER_TOKEN_URL, {
     method: 'POST',
     headers: {
@@ -238,12 +248,19 @@ async function fetchKrogerToken(clientId, clientSecret) {
     },
     body: 'grant_type=client_credentials&scope=product.compact',
   });
-  if (!res.ok) throw new Error(`Kroger token request failed (${res.status}): ${await res.text()}`);
+  if (!res.ok)
+    throw new Error(
+      `Kroger token request failed (${res.status}): ${await res.text()}`,
+    );
   const data = await res.json();
   return data.access_token;
 }
 
-export async function importKrogerStores({ zipcode, stores = 10, dryRun = false } = {}) {
+export async function importKrogerStores({
+  zipcode,
+  stores = 10,
+  dryRun = false,
+} = {}) {
   if (!zipcode) throw new Error('importKrogerStores requires a zipcode');
 
   const clientId = process.env.KROGER_CLIENT_ID;
@@ -262,7 +279,10 @@ export async function importKrogerStores({ zipcode, stores = 10, dryRun = false 
   const res = await fetch(`${KROGER_LOCATIONS_URL}?${params}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
   });
-  if (!res.ok) throw new Error(`Kroger locations API error (${res.status}): ${await res.text()}`);
+  if (!res.ok)
+    throw new Error(
+      `Kroger locations API error (${res.status}): ${await res.text()}`,
+    );
 
   const storeList = (await res.json())?.data ?? [];
   if (!storeList.length) {
@@ -277,7 +297,9 @@ export async function importKrogerStores({ zipcode, stores = 10, dryRun = false 
     const hrs = s.hours ?? {};
 
     // phone comes back as "(555) 123-4567" — strip everything except digits for bigint
-    const phoneDigits = s.phone ? parseInt(s.phone.replace(/\D/g, ''), 10) : null;
+    const phoneDigits = s.phone
+      ? parseInt(s.phone.replace(/\D/g, ''), 10)
+      : null;
 
     const record = {
       locationId: s.locationId ? parseInt(s.locationId, 10) : null,
@@ -334,7 +356,9 @@ export async function importKrogerStores({ zipcode, stores = 10, dryRun = false 
     .upsert(rows, { onConflict: 'locationId' });
   if (error) throw new Error(`${TABLE_STORES} upsert failed: ${error.message}`);
 
-  console.log(`  Upserted ${rows.length} stores near ${zipcode} → ${TABLE_STORES}`);
+  console.log(
+    `  Upserted ${rows.length} stores near ${zipcode} → ${TABLE_STORES}`,
+  );
 }
 
 // ── Entry point (when run directly) ──────────────────────────────────────────
