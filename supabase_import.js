@@ -19,7 +19,8 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { parse } from 'csv-parse';
-import { createReadStream } from 'fs';
+import { createReadStream, writeFileSync } from 'fs';
+import fetch from 'node-fetch';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -34,6 +35,12 @@ const BATCH_SIZE = 1000;
 
 const TABLE_WALMART = 'walmart_ingredients';
 const TABLE_KROGER = 'kroger_ingredients';
+const TABLE_STORES = 'kroger_locations';
+
+const KROGER_TOKEN_URL = 'https://api.kroger.com/v1/connect/oauth2/token';
+const KROGER_LOCATIONS_URL = 'https://api.kroger.com/v1/locations';
+
+const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
   console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY in environment');
@@ -214,6 +221,120 @@ export async function importKroger({ dryRun = false } = {}) {
   console.log(
     `    Skipped (no name/price): ${skippedMissingFields.toLocaleString()}`,
   );
+}
+
+// ── Kroger Stores ─────────────────────────────────────────────────────────────
+// Fetches the N nearest Kroger-family stores for a given zip code via the
+// Kroger Locations API and upserts them into kroger_stores. Using upsert
+// (instead of insert) means re-running is safe — it just refreshes the data.
+
+async function fetchKrogerToken(clientId, clientSecret) {
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+  const res = await fetch(KROGER_TOKEN_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Authorization: `Basic ${credentials}`,
+    },
+    body: 'grant_type=client_credentials&scope=product.compact',
+  });
+  if (!res.ok) throw new Error(`Kroger token request failed (${res.status}): ${await res.text()}`);
+  const data = await res.json();
+  return data.access_token;
+}
+
+export async function importKrogerStores({ zipcode, stores = 10, dryRun = false } = {}) {
+  if (!zipcode) throw new Error('importKrogerStores requires a zipcode');
+
+  const clientId = process.env.KROGER_CLIENT_ID;
+  const clientSecret = process.env.KROGER_CLIENT_SECRET;
+  if (!clientId || !clientSecret)
+    throw new Error('Missing KROGER_CLIENT_ID or KROGER_CLIENT_SECRET');
+
+  console.log(`\n  Fetching ${stores} nearest stores to zip ${zipcode}...`);
+  const token = await fetchKrogerToken(clientId, clientSecret);
+
+  const params = new URLSearchParams({
+    'filter.zipCode.near': zipcode,
+    'filter.limit': stores,
+    'filter.radiusInMiles': 50,
+  });
+  const res = await fetch(`${KROGER_LOCATIONS_URL}?${params}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`Kroger locations API error (${res.status}): ${await res.text()}`);
+
+  const storeList = (await res.json())?.data ?? [];
+  if (!storeList.length) {
+    console.log(`  No stores found near ${zipcode}.`);
+    return;
+  }
+
+  // Map each store object to the exact column names in kroger_stores
+  const rows = storeList.map((s) => {
+    const addr = s.address ?? {};
+    const geo = s.geolocation ?? {};
+    const hrs = s.hours ?? {};
+
+    // phone comes back as "(555) 123-4567" — strip everything except digits for bigint
+    const phoneDigits = s.phone ? parseInt(s.phone.replace(/\D/g, ''), 10) : null;
+
+    const record = {
+      locationId: s.locationId ? parseInt(s.locationId, 10) : null,
+      name: s.name ?? null,
+      chain: s.chain ?? null,
+      phone: isNaN(phoneDigits) ? null : phoneDigits,
+      address_line1: addr.addressLine1 ?? null,
+      address_line2: addr.addressLine2 ?? null,
+      address_city: addr.city ?? null,
+      address_state: addr.state ?? null,
+      address_zipCode: addr.zipCode ? parseInt(addr.zipCode, 10) : null,
+      address_county: addr.county ?? null,
+      geo_latitude: geo.latitude ?? null,
+      geo_longitude: geo.longitude ?? null,
+      hours_timezone: hrs.timezone ?? null,
+      hours_gmtOffset: hrs.gmtOffset != null ? String(hrs.gmtOffset) : null,
+      hours_open24: hrs.open24 ?? null,
+    };
+
+    // Flatten each day's open/close/open24 into individual columns
+    for (const day of DAYS) {
+      const d = hrs[day] ?? {};
+      record[`hours_${day}_open`] = d.open ?? null;
+      record[`hours_${day}_close`] = d.close ?? null;
+      record[`hours_${day}_open24`] = d.open24 ?? null;
+    }
+
+    return record;
+  });
+
+  if (dryRun) {
+    const schemaPath = path.join(__dirname, 'kroger_stores_schema.csv');
+    const headers = Object.keys(rows[0]);
+    // Escape a value for CSV — wrap in quotes if it contains commas, quotes, or newlines
+    const esc = (v) => {
+      if (v === null || v === undefined) return '';
+      const s = String(v);
+      return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    };
+    const lines = [
+      headers.join(','),
+      ...rows.map((r) => headers.map((h) => esc(r[h])).join(',')),
+    ];
+    writeFileSync(schemaPath, lines.join('\n'), 'utf8');
+    console.log(`  [dry-run] wrote ${rows.length} stores → ${schemaPath}`);
+    return;
+  }
+
+  // Upsert so re-runs just refresh store data instead of erroring on duplicates
+  const { error } = await supabase
+    .from(TABLE_STORES)
+    .upsert(rows, { onConflict: 'locationId' });
+  if (error) throw new Error(`${TABLE_STORES} upsert failed: ${error.message}`);
+
+  console.log(`  Upserted ${rows.length} stores near ${zipcode} → ${TABLE_STORES}`);
 }
 
 // ── Entry point (when run directly) ──────────────────────────────────────────
