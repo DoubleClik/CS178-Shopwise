@@ -93,7 +93,7 @@ struct RecipeView: View {
     
     private func recipeCard(_ recipe: RecipeRow) -> some View {
         CardContainer {
-            HStack(spacing: 12) {
+            HStack(spacing: 14) {
 
                 if let urlString = recipe.imageURL,
                    let url = URL(string: urlString) {
@@ -108,24 +108,31 @@ struct RecipeView: View {
                             ProgressView()
                         }
                     }
-                    .frame(width: 54, height: 54)
+                    .frame(width: 67, height: 67)
                     .background(Color(.systemGray5))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
 
                 } else {
-                    Circle()
+                    RoundedRectangle(cornerRadius: 14)
                         .fill(Color(.systemGray5))
-                        .frame(width: 54, height: 54)
+                        .frame(width: 67, height: 67)
+                        .overlay(
+                            Image(systemName: "fork.knife")
+                                .foregroundStyle(.secondary)
+                        )
                 }
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(recipe.title)
                         .font(.headline)
                         .lineLimit(2)
 
-                    Text("\(recipe.difficultyText) • \(recipe.estimatedMinutes) min")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    /*HStack(spacing: 8) {
+                        Label(recipe.difficultyText, systemImage: "chart.bar")
+                        Label("\(recipe.estimatedMinutes) min", systemImage: "clock")
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)*/
                 }
 
                 Spacer()
@@ -138,26 +145,41 @@ struct RecipeView: View {
 
     private func recipeExpanded(_ recipe: RecipeRow) -> some View {
         CardContainer {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Ingredients")
+                    .font(.headline)
 
-            Text("Ingredients")
-                .font(.headline)
-
-            ForEach(recipe.ingredientList, id: \.self) { item in
-                HStack {
-                    Image(systemName: "checkmark.circle")
-                    Text(item)
+                ForEach(recipe.ingredientList, id: \.self) { item in
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                        Text(item)
+                    }
                 }
-            }
 
-            Button {
-                for item in recipe.ingredientList {
-                    cartStore.add(id: "\(recipe.id)::\(item)", name: item, unit: "", price: 0)
+                if let instructions = recipe.instructions,
+                   !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Divider()
+                        .padding(.vertical, 2)
+
+                    Text("Instructions")
+                        .font(.headline)
+
+                    Text(instructions)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-            } label: {
-                Label("Add Ingredients to Cart", systemImage: "cart.badge.plus")
-                    .frame(maxWidth: .infinity)
+
+                Button {
+                    for item in recipe.ingredientList {
+                        cartStore.add(id: "\(recipe.id)::\(item)", name: item, unit: "", price: 0)
+                    }
+                } label: {
+                    Label("Add Ingredients to Cart", systemImage: "cart.badge.plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
         }
     }
     

@@ -56,7 +56,7 @@ struct RecipeRow: Identifiable, Codable, Hashable {
         return items.isEmpty ? nil : items
     }
 
-    var difficultyText: String {
+    /*var difficultyText: String {
         let count = ingredientList.count
         if count <= 5 { return "Easy" }
         if count <= 10 { return "Medium" }
@@ -67,5 +67,5 @@ struct RecipeRow: Identifiable, Codable, Hashable {
         let text = instructions ?? ""
         let sentences = text.components(separatedBy: ".").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count
         return max(10, min(60, sentences * 5))
-    }
+    }*/
 }

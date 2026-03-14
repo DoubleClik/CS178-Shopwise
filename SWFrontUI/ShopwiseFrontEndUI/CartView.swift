@@ -3,53 +3,59 @@ import SwiftUI
 struct CartView: View {
     @State private var showShoppingList = false
     @EnvironmentObject private var cartStore: CartStore
+    @State private var expandedRecipeIds: Set<String> = []
 
     var body: some View {
         List {
-            Section("Items") {
-                if cartStore.items.isEmpty {
+            if cartStore.items.isEmpty {
+                Section("Items") {
                     Text("Cart is empty")
                         .foregroundStyle(.secondary)
-                } else {
-                    ForEach(cartStore.items) { item in
-                        HStack(alignment: .top, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(item.name)
-                                    .font(.headline)
-                                Text(item.unit)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                Text(String(format: "$%.2f", item.price))
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            HStack(spacing: 10) {
+                }
+            } else {
+                if !recipeGroups.isEmpty {
+                    Section("Recipes") {
+                        ForEach(recipeGroups, id: \.id) { group in
+                            VStack(alignment: .leading, spacing: 8) {
                                 Button {
-                                    cartStore.decrement(item)
+                                    toggle(group.id)
                                 } label: {
-                                    Image(systemName: "minus.circle")
+                                    HStack {
+                                        Text(group.title)
+                                            .font(.headline)
+                                        Spacer()
+                                        Text("\(group.items.count) items")
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                        Image(systemName: expandedRecipeIds.contains(group.id) ? "chevron.up" : "chevron.down")
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
-                                .buttonStyle(.borderless)
+                                .buttonStyle(.plain)
 
-                                Text("\(item.quantity)")
-                                    .font(.headline)
-                                    .frame(minWidth: 24)
-
-                                Button {
-                                    cartStore.increment(item)
-                                } label: {
-                                    Image(systemName: "plus.circle")
+                                if expandedRecipeIds.contains(group.id) {
+                                    ForEach(group.items) { item in
+                                        itemRow(item)
+                                    }
                                 }
-                                .buttonStyle(.borderless)
                             }
+                            .padding(.vertical, 4)
                         }
-                        .padding(.vertical, 4)
                     }
-                    .onDelete { indexSet in
-                        for idx in indexSet {
-                            cartStore.remove(cartStore.items[idx])
+                }
+
+                Section("Individual Items") {
+                    if individualItems.isEmpty {
+                        Text("No individual items")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(individualItems) { item in
+                            itemRow(item)
+                        }
+                        .onDelete { indexSet in
+                            for idx in indexSet {
+                                cartStore.remove(individualItems[idx])
+                            }
                         }
                     }
                 }
@@ -80,4 +86,77 @@ struct CartView: View {
             ShoppingListView()
         }
     }
+
+    private var recipeGroups: [RecipeGroup] {
+        let grouped = Dictionary(grouping: cartStore.items.compactMap { item -> (String, String, CartLineItem)? in
+            guard let groupId = item.groupId else { return nil }
+            let title = item.groupTitle ?? "Recipe"
+            return (groupId, title, item)
+        }, by: { $0.0 })
+
+        return grouped.map { key, values in
+            let items = values.map { $0.2 }
+            let title = values.first?.1 ?? "Recipe"
+            return RecipeGroup(id: key, title: title, items: items)
+        }
+        .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    private var individualItems: [CartLineItem] {
+        cartStore.items.filter { $0.groupId == nil }
+    }
+
+    private func toggle(_ id: String) {
+        if expandedRecipeIds.contains(id) {
+            expandedRecipeIds.remove(id)
+        } else {
+            expandedRecipeIds.insert(id)
+        }
+    }
+
+    @ViewBuilder
+    private func itemRow(_ item: CartLineItem) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.name)
+                    .font(.headline)
+                if !item.unit.isEmpty {
+                    Text(item.unit)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Text(String(format: "$%.2f", item.price))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            HStack(spacing: 10) {
+                Button {
+                    cartStore.decrement(item)
+                } label: {
+                    Image(systemName: "minus.circle")
+                }
+                .buttonStyle(.borderless)
+
+                Text("\(item.quantity)")
+                    .font(.headline)
+                    .frame(minWidth: 24)
+
+                Button {
+                    cartStore.increment(item)
+                } label: {
+                    Image(systemName: "plus.circle")
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct RecipeGroup: Identifiable {
+    let id: String
+    let title: String
+    let items: [CartLineItem]
 }
