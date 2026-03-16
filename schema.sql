@@ -38,6 +38,27 @@ CREATE TABLE IF NOT EXISTS kroger_ingredients (
   search_keyword  TEXT
 );
 
+-- ── Kroger ingredients v2 ─────────────────────────────────────────────────────
+-- Expanded schema capturing all Kroger API fields.
+-- price and store_ids are semicolon-delimited text (one entry per store).
+-- Re-runs require TRUNCATE first.
+
+CREATE TABLE IF NOT EXISTS kroger_ingredients2 (
+  "productId"      BIGINT PRIMARY KEY,
+  brand            TEXT,
+  name             TEXT,
+  categories       TEXT,
+  "countryOrigin"  TEXT,
+  "aisleLocations" TEXT,
+  image_url        TEXT,
+  size             TEXT,
+  "soldBy"         TEXT,
+  classifier       TEXT,
+  search_keyword   TEXT,
+  store_ids        TEXT,
+  price            TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS kroger_ingredients_classifiers_idx
   ON kroger_ingredients USING GIN (classifiers);
 
