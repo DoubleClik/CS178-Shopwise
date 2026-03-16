@@ -69,6 +69,17 @@ final class CartStore: ObservableObject {
         let id = "\(recipeId)::\(name)"
         if let idx = items.firstIndex(where: { $0.id == id }) {
             items[idx].quantity += 1
+            if items[idx].groupId == nil {
+                items[idx] = CartLineItem(
+                    id: items[idx].id,
+                    name: items[idx].name,
+                    unit: items[idx].unit,
+                    price: items[idx].price,
+                    quantity: items[idx].quantity,
+                    groupId: recipeId,
+                    groupTitle: recipeTitle
+                )
+            }
         } else {
             items.append(
                 CartLineItem(

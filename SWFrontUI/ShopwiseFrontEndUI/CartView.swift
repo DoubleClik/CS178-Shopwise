@@ -88,18 +88,24 @@ struct CartView: View {
     }
 
     private var recipeGroups: [RecipeGroup] {
-        let grouped = Dictionary(grouping: cartStore.items.compactMap { item -> (String, String, CartLineItem)? in
-            guard let groupId = item.groupId else { return nil }
+        let items = cartStore.items
+        var groups: [String: RecipeGroup] = [:]
+        
+        for item in items {
+            guard let groupId = item.groupId, !groupId.isEmpty else { continue }
             let title = item.groupTitle ?? "Recipe"
-            return (groupId, title, item)
-        }, by: { $0.0 })
 
-        return grouped.map { key, values in
-            let items = values.map { $0.2 }
-            let title = values.first?.1 ?? "Recipe"
-            return RecipeGroup(id: key, title: title, items: items)
+            if let existing = groups[groupId] {
+                var newItems = existing.items
+                newItems.append(item)
+                groups[groupId] = RecipeGroup(id: existing.id, title: existing.title, items: newItems)
+            } else {
+                groups[groupId] = RecipeGroup(id: groupId, title: title, items: [item])
+            }
         }
-        .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+
+        return groups.values
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
     private var individualItems: [CartLineItem] {

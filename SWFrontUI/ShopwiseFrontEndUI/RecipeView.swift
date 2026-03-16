@@ -170,11 +170,17 @@ struct RecipeView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Button {
-                    for item in recipe.ingredientList {
-                        cartStore.add(id: "\(recipe.id)::\(item)", name: item, unit: "", price: 0)
-                    }
-                } label: {
+            Button {
+                for item in recipe.ingredientList {
+                    cartStore.add(
+                        recipeId: String(recipe.id),
+                        recipeTitle: recipe.title,
+                        name: item,
+                        unit: "",
+                        price: 0
+                    )
+                }
+            } label: {
                     Label("Add Ingredients to Cart", systemImage: "cart.badge.plus")
                         .frame(maxWidth: .infinity)
                 }
