@@ -15,6 +15,7 @@ struct RecipeView: View {
     @State private var offset = 0
     @State private var hasMore = true
     @State private var isLoadingMore = false
+    @State private var excludedIngredientsByRecipe: [Int: Set<String>] = [:]
     
     private var filtered: [RecipeRow] {
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -150,11 +151,7 @@ struct RecipeView: View {
                     .font(.headline)
 
                 ForEach(recipe.ingredientList, id: \.self) { item in
-                    HStack(spacing: 10) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                        Text(item)
-                    }
+                    ingredientRow(recipeId: recipe.id, item: item)
                 }
 
                 if let instructions = recipe.instructions,
@@ -170,23 +167,51 @@ struct RecipeView: View {
                         .foregroundStyle(.secondary)
                 }
 
-            Button {
-                for item in recipe.ingredientList {
-                    cartStore.add(
-                        recipeId: String(recipe.id),
-                        recipeTitle: recipe.title,
-                        name: item,
-                        unit: "",
-                        price: 0
-                    )
-                }
-            } label: {
-                    Label("Add Ingredients to Cart", systemImage: "cart.badge.plus")
+                Button {
+                    let excluded = excludedIngredientsByRecipe[recipe.id] ?? []
+                    for item in recipe.ingredientList where !excluded.contains(item) {
+                        cartStore.add(
+                            recipeId: String(recipe.id),
+                            recipeTitle: recipe.title,
+                            name: item,
+                            unit: "",
+                            price: 0
+                        )
+                    }
+                } label: {
+                    Label("Add Selected Ingredients", systemImage: "cart.badge.plus")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
             }
         }
+    }
+
+    private func toggleIngredient(recipeId: Int, item: String) {
+        var set = excludedIngredientsByRecipe[recipeId] ?? []
+        if set.contains(item) {
+            set.remove(item)
+        } else {
+            set.insert(item)
+        }
+        excludedIngredientsByRecipe[recipeId] = set
+    }
+
+    private func ingredientRow(recipeId: Int, item: String) -> some View {
+        let isExcluded = excludedIngredientsByRecipe[recipeId]?.contains(item) == true
+
+        return Button {
+            toggleIngredient(recipeId: recipeId, item: item)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: isExcluded ? "minus.circle" : "checkmark.circle.fill")
+                    .foregroundStyle(isExcluded ? .secondary : Color.green)
+                Text(item)
+                    .foregroundStyle(isExcluded ? .secondary : .primary)
+                    .strikethrough(isExcluded, color: .secondary)
+            }
+        }
+        .buttonStyle(.plain)
     }
     
     @MainActor
