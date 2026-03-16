@@ -212,14 +212,12 @@ export async function importKroger({ dryRun = false } = {}) {
 
     batch.push({
       productId: row.productId ? parseInt(row.productId, 10) : null,
-      upc: row.upc ? parseInt(row.upc, 10) : null,
       brand: row.brand || null,
       name: row.description,
       categories: row.categories || null,
       countryOrigin: row.countryOrigin || null,
       aisleLocations: row.aisleLocations || null,
       image_url: row.image_url || null,
-      itemId: row.itemId ? parseInt(row.itemId, 10) : null,
       size: row.size || '',
       soldBy: row.soldBy || null,
       classifier: row.classifier || null,

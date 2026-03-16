@@ -44,21 +44,19 @@ CREATE TABLE IF NOT EXISTS kroger_ingredients (
 -- Re-runs require TRUNCATE first.
 
 CREATE TABLE IF NOT EXISTS kroger_ingredients2 (
-  "productId"     BIGINT PRIMARY KEY,
-  upc             BIGINT,
-  brand           TEXT,
-  name            TEXT,
-  categories      TEXT,
-  "countryOrigin" TEXT,
+  "productId"      BIGINT PRIMARY KEY,
+  brand            TEXT,
+  name             TEXT,
+  categories       TEXT,
+  "countryOrigin"  TEXT,
   "aisleLocations" TEXT,
-  image_url       TEXT,
-  "itemId"        BIGINT,
-  size            TEXT,
-  "soldBy"        TEXT,
-  classifier      TEXT,
-  search_keyword  TEXT,
-  store_ids       TEXT,
-  price           TEXT  NOT NULL
+  image_url        TEXT,
+  size             TEXT,
+  "soldBy"         TEXT,
+  classifier       TEXT,
+  search_keyword   TEXT,
+  store_ids        TEXT,
+  price            TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS kroger_ingredients_classifiers_idx
