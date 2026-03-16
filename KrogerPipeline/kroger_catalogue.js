@@ -666,10 +666,10 @@ const CSV_HEADERS = [
   'soldBy',
   'soldInStore',
   'favorite',
-  'temperature',           // indicator string (e.g. "Refrigerated")
+  'temperature', // indicator string (e.g. "Refrigerated")
   'temperature_heatSensitive',
-  'price_regular',         // base price from the API
-  'price_promo',           // promotional price if active
+  'price_regular', // base price from the API
+  'price_promo', // promotional price if active
   'fulfillment_inStore',
   'fulfillment_curbside',
   'fulfillment_delivery',
@@ -678,10 +678,10 @@ const CSV_HEADERS = [
   'discount_digital',
   'discount_inStore',
   // ── Pipeline metadata ─────────────────────────────────────────────────────
-  'classifier',            // ← Walmart classifier tag (PRODUCE, PROTEIN, DAIRY, etc.)
-  'search_keyword',        // ← the specific term that first found this product
-  'store_ids',             // ← semicolon-separated locationIds (in order found)
-  'price',                 // ← semicolon-separated per-store prices matching store_ids order
+  'classifier', // ← Walmart classifier tag (PRODUCE, PROTEIN, DAIRY, etc.)
+  'search_keyword', // ← the specific term that first found this product
+  'store_ids', // ← semicolon-separated locationIds (in order found)
+  'price', // ← semicolon-separated per-store prices matching store_ids order
 ];
 
 // --- Token Manager ---
@@ -796,7 +796,9 @@ function productToFields(p, classifier = '', searchKeyword = '') {
     description: p.description ?? '',
     categories: (p.categories ?? []).join('; '),
     countryOrigin: p.countryOrigin ?? '',
-    aisleLocations: (p.aisleLocations ?? []).map((a) => a.description).join('; '),
+    aisleLocations: (p.aisleLocations ?? [])
+      .map((a) => a.description)
+      .join('; '),
     itemsFacets: (p.itemsFacets ?? []).join('; '),
     image_url: imgUrl,
     // Item-level (items[0])
@@ -820,7 +822,7 @@ function productToFields(p, classifier = '', searchKeyword = '') {
     classifier: classifier,
     search_keyword: searchKeyword,
     store_ids: '', // filled in during store enrichment (phase 2)
-    price: '',     // per-store prices, semicolon-delimited, matches store_ids order
+    price: '', // per-store prices, semicolon-delimited, matches store_ids order
   };
 }
 
@@ -975,7 +977,6 @@ async function loadCatalogue() {
   return catalogue;
 }
 
-
 // --- Core: Run search terms and collect results ---
 async function runSearchTerms(locationId, tokenMgr) {
   const categoryKeys = categoryFilter
@@ -1080,19 +1081,23 @@ async function buildCatalogue(tokenMgr) {
 
   console.log(`\nBuilding food catalogue for stores near ${zip}`);
   console.log(`  Output: ${outFile}`);
-  if (isDryRun) console.log(`  Dry run: 3 terms per category, ${storesArg || maxStores} stores max\n`);
+  if (isDryRun)
+    console.log(
+      `  Dry run: 3 terms per category, ${storesArg || maxStores} stores max\n`,
+    );
 
   // Find all stores upfront — we need the first one for phase 1
   console.log(`\n  Finding stores within ${radiusArg} miles of ${zip}...`);
   const stores = await fetchStoresNearZip(zip, tokenMgr);
 
-  const storeLimit = maxStores === Infinity
-    ? stores.length
-    : Math.min(maxStores, stores.length);
+  const storeLimit =
+    maxStores === Infinity ? stores.length : Math.min(maxStores, stores.length);
 
   console.log(`\n  Found ${stores.length} store(s) - using ${storeLimit}:\n`);
   stores.slice(0, storeLimit).forEach((s, i) => {
-    console.log(`    ${String(i + 1).padStart(2)}. [${s.locationId}] ${s.name} (${s.chain})`);
+    console.log(
+      `    ${String(i + 1).padStart(2)}. [${s.locationId}] ${s.name} (${s.chain})`,
+    );
     console.log(`        ${s.address}`);
   });
 
@@ -1100,21 +1105,38 @@ async function buildCatalogue(tokenMgr) {
   // Searching with a real locationId is required to get the full product set.
   // Without it the API only returns a fraction of available products (~2k vs ~19k).
   const primaryStore = stores[0];
-  console.log(`\n  Phase 1: Building catalogue from primary store [${primaryStore.locationId}] ${primaryStore.name}...`);
-  const primaryResults = await runSearchTerms(primaryStore.locationId, tokenMgr);
+  console.log(
+    `\n  Phase 1: Building catalogue from primary store [${primaryStore.locationId}] ${primaryStore.name}...`,
+  );
+  const primaryResults = await runSearchTerms(
+    primaryStore.locationId,
+    tokenMgr,
+  );
 
   const catalogue = new Map();
-  for (const [productId, { product: p, classifier, search_keyword }] of primaryResults) {
+  for (const [
+    productId,
+    { product: p, classifier, search_keyword },
+  ] of primaryResults) {
     if (p.items?.[0]?.fulfillment?.inStore === false) continue;
     const fields = productToFields(p, classifier, search_keyword);
     fields.store_ids = primaryStore.locationId;
     fields.price = String(p.items?.[0]?.price?.regular ?? '');
     catalogue.set(productId, fields);
   }
-  console.log(`\n  Phase 1 complete: ${catalogue.size.toLocaleString()} products from primary store`);
+  console.log(
+    `\n  Phase 1 complete: ${catalogue.size.toLocaleString()} products from primary store`,
+  );
 
   // Save after phase 1 so we have something if phase 2 crashes
-  fs.writeFileSync(outFile, [CSV_HEADERS.join(','), ...Array.from(catalogue.values()).map(rowToCsv)].join('\n'), 'utf8');
+  fs.writeFileSync(
+    outFile,
+    [
+      CSV_HEADERS.join(','),
+      ...Array.from(catalogue.values()).map(rowToCsv),
+    ].join('\n'),
+    'utf8',
+  );
 
   // ── Phase 2: Enrich remaining stores ──────────────────────────────────────
   // Re-search each additional store to add its prices and store_id.
@@ -1123,18 +1145,25 @@ async function buildCatalogue(tokenMgr) {
 
   for (let i = 1; i < storeLimit; i++) {
     const store = stores[i];
-    console.log(`\n  [${i + 1}/${storeLimit}] Enriching from store [${store.locationId}] ${store.name}...`);
+    console.log(
+      `\n  [${i + 1}/${storeLimit}] Enriching from store [${store.locationId}] ${store.name}...`,
+    );
 
     const storeProducts = await runSearchTerms(store.locationId, tokenMgr);
     let updatedThisStore = 0;
 
-    for (const [productId, { product: p, classifier, search_keyword }] of storeProducts) {
+    for (const [
+      productId,
+      { product: p, classifier, search_keyword },
+    ] of storeProducts) {
       const price = String(p.items?.[0]?.price?.regular ?? '');
       const row = catalogue.get(productId);
 
       if (row) {
         // product was in global catalogue — append this store's id and price
-        const existingStores = row.store_ids ? row.store_ids.split(';').filter(Boolean) : [];
+        const existingStores = row.store_ids
+          ? row.store_ids.split(';').filter(Boolean)
+          : [];
         if (!existingStores.includes(store.locationId)) {
           row.store_ids = [...existingStores, store.locationId].join(';');
           row.price = row.price ? `${row.price};${price}` : price;
@@ -1151,16 +1180,22 @@ async function buildCatalogue(tokenMgr) {
     }
 
     totalUpdated += updatedThisStore;
-    console.log(`\n  Store [${store.locationId}] done: ${updatedThisStore.toLocaleString()} products enriched`);
+    console.log(
+      `\n  Store [${store.locationId}] done: ${updatedThisStore.toLocaleString()} products enriched`,
+    );
 
     // write after every store so a crash doesn't lose progress
     const header = CSV_HEADERS.join(',');
     const rows = Array.from(catalogue.values()).map(rowToCsv);
     fs.writeFileSync(outFile, [header, ...rows].join('\n'), 'utf8');
-    console.log(`  Catalogue saved (${catalogue.size.toLocaleString()} total products)`);
+    console.log(
+      `  Catalogue saved (${catalogue.size.toLocaleString()} total products)`,
+    );
   }
 
-  console.log(`\n-- Done -------------------------------------------------------------------`);
+  console.log(
+    `\n-- Done -------------------------------------------------------------------`,
+  );
   console.log(`  Global products   : ${catalogue.size.toLocaleString()}`);
   console.log(`  Stores enriched   : ${storeLimit}`);
   console.log(`  Products with price: ${totalUpdated.toLocaleString()}`);
