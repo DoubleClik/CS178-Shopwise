@@ -34,7 +34,7 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const BATCH_SIZE = 1000;
 
 const TABLE_WALMART = 'walmart_ingredients';
-const TABLE_KROGER = 'kroger_ingredients';
+const TABLE_KROGER = 'kroger_ingredients2';
 const TABLE_STORES = 'kroger_locations';
 
 const KROGER_TOKEN_URL = 'https://api.kroger.com/v1/connect/oauth2/token';
@@ -86,13 +86,17 @@ function csvParser(filePath) {
 
 // Sends one batch of rows to Supabase. In dry-run mode it just logs what
 // it would have done instead of actually writing anything.
-async function insertBatch(table, rows, dryRun) {
+// Pass onConflict to upsert instead of insert (e.g. 'productId').
+async function insertBatch(table, rows, dryRun, onConflict = null) {
   if (dryRun) {
-    console.log(`  [dry-run] would insert ${rows.length} rows → ${table}`);
+    console.log(`  [dry-run] would upsert ${rows.length} rows → ${table}`);
     return;
   }
-  const { error } = await supabase.from(table).insert(rows);
-  if (error) throw new Error(`${table} insert failed: ${error.message}`);
+  const query = onConflict
+    ? supabase.from(table).upsert(rows, { onConflict })
+    : supabase.from(table).insert(rows);
+  const { error } = await query;
+  if (error) throw new Error(`${table} upsert failed: ${error.message}`);
 }
 
 // ── Walmart ───────────────────────────────────────────────────────────────────
@@ -183,7 +187,7 @@ export async function importKroger({ dryRun = false } = {}) {
 
   async function flush() {
     if (!batch.length) return;
-    await insertBatch(TABLE_KROGER, batch, dryRun);
+    await insertBatch(TABLE_KROGER, batch, dryRun, 'productId');
     totalInserted += batch.length;
     batch = [];
     process.stdout.write(
@@ -198,26 +202,30 @@ export async function importKroger({ dryRun = false } = {}) {
       continue;
     }
 
-    // The price column looks like "2.99;3.49;2.99" — one price per store.
-    // We just grab the first one as a representative price for the product.
-    const price = toFloat(split(row.price, ';')[0]);
-    if (price === null) {
+    // price is stored as-is (semicolon-delimited per-store prices).
+    // Skip if completely empty since the column is NOT NULL.
+    const price = row.price ? row.price.trim() : '';
+    if (!price) {
       skippedMissingFields++;
       continue;
     }
 
     batch.push({
-      name: row.description,
+      productId: row.productId ? parseInt(row.productId, 10) : null,
+      upc: row.upc ? parseInt(row.upc, 10) : null,
       brand: row.brand || null,
-      price,
-      // classifier is a single tag like "PRODUCE" — wrap it in an array
-      // to match the classifiers column type on the Walmart table
-      classifiers: row.classifier ? [row.classifier] : [],
-      image: row.image_url || null,
+      name: row.description,
+      categories: row.categories || null,
+      countryOrigin: row.countryOrigin || null,
+      aisleLocations: row.aisleLocations || null,
+      image_url: row.image_url || null,
+      itemId: row.itemId ? parseInt(row.itemId, 10) : null,
       size: row.size || '',
-      // store_ids looks like "70400786;70400343" — split into an array
-      store_id: split(row.store_ids, ';'),
+      soldBy: row.soldBy || null,
+      classifier: row.classifier || null,
       search_keyword: row.search_keyword || null,
+      store_ids: row.store_ids || null,
+      price: String(price),
     });
 
     if (batch.length >= BATCH_SIZE) await flush();
