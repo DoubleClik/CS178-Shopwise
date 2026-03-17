@@ -79,6 +79,16 @@ struct CartView: View {
                 }
                 .disabled(cartStore.items.isEmpty)
             }
+
+            if !cartStore.items.isEmpty {
+                Section {
+                    Button(role: .destructive) {
+                        cartStore.clear()
+                    } label: {
+                        Text("Clear Cart")
+                    }
+                }
+            }
         }
         .navigationTitle("Cart")
         .appToolbar()

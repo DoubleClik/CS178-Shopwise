@@ -1,51 +1,3 @@
-//
-//  AuthManager.swift
-//  ShopwiseFrontEndUI
-//
-//  Created by Nicholas Castellanos on 2/2/26.
-//  Edited by Nicholas Castellanos on 2/24/26
-
-//import SwiftUI
-//import Combine
-//
-//@MainActor
-//final class AuthManager: ObservableObject {
-//    @Published var isSignedIn: Bool = false
-//    @Published var userEmail: String? = nil
-//
-//    func signIn(email: String, password: String) async throws {
-//        guard !email.isEmpty, !password.isEmpty else {
-//            throw AuthError.missingFields
-//        }
-//        self.userEmail = email
-//        self.isSignedIn = true
-//    }
-//
-//    func signUp(name: String, email: String, password: String) async throws {
-//        guard !name.isEmpty, !email.isEmpty, !password.isEmpty else {
-//            throw AuthError.missingFields
-//        }
-//        self.userEmail = email
-//        self.isSignedIn = true
-//    }
-//
-//    func signOut() {
-//        userEmail = nil
-//        isSignedIn = false
-//    }
-//
-//    enum AuthError: LocalizedError {
-//        case missingFields
-//        var errorDescription: String? { "Please fill out all fields." }
-//    }
-//}
-//
-//
-//#Preview {
-//    AuthView()
-//        .environmentObject(AuthManager())
-//}
-
 import Foundation
 import SwiftUI
 import Combine
@@ -69,6 +21,7 @@ final class AuthManager: ObservableObject {
     @Published var isSignedIn: Bool = false
     @Published var userEmail: String? = nil
     @Published var userID: String? = nil
+    @Published var userName: String? = nil
 
     // Tokens
     private(set) var accessToken: String? = nil
@@ -116,6 +69,7 @@ final class AuthManager: ObservableObject {
             self.applySession(session)
             self.userEmail = email
             self.userID = session.user?.id
+            self.userName = session.user?.user_metadata?.name
         }
     }
     
@@ -202,12 +156,14 @@ final class AuthManager: ObservableObject {
             self.userEmail = user.email
             self.isSignedIn = true
             self.userID = user.id
+            self.userName = user.user_metadata?.name
         } catch {
             // token might be expired -> try refresh
             if let refreshed = try? await refreshSession() {
                 self.userEmail = refreshed.user?.email
                 self.isSignedIn = true
                 self.userID = refreshed.user?.id
+                self.userName = refreshed.user?.user_metadata?.name
             } else {
                 clearSession()
             }
@@ -256,6 +212,7 @@ final class AuthManager: ObservableObject {
         self.accessToken = session.access_token
         self.refreshToken = session.refresh_token
         self.userID = session.user?.id
+        self.userName = session.user?.user_metadata?.name
         saveTokensToStorage()
         self.isSignedIn = true
     }
@@ -265,6 +222,7 @@ final class AuthManager: ObservableObject {
         self.refreshToken = nil
         self.userEmail = nil
         self.userID = nil
+        self.userName = nil
         self.isSignedIn = false
         deleteTokensFromStorage()
     }
@@ -365,6 +323,11 @@ struct SupabaseSession: Codable {
 struct SupabaseUser: Codable {
     let id: String?
     let email: String?
+    let user_metadata: UserMetadata?
+}
+
+struct UserMetadata: Codable {
+    let name: String?
 }
 
 struct SupabaseError: Codable {
@@ -425,7 +388,7 @@ extension AuthManager {
     }
 }
 
-//Onboard survey fetch/save 
+//Onboard survey fetch/save
 struct UserPreferencesRow: Codable {
     let user_id: String
     let diet_preferences: [String]

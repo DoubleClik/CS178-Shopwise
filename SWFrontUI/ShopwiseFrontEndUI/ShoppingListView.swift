@@ -5,6 +5,7 @@ struct ShoppingListView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var checkedIDs: Set<String> = []
+    @State private var expandedRecipeIds: Set<String> = []
 
     private var checkedTotal: Double {
         cartStore.items
@@ -25,11 +26,32 @@ struct ShoppingListView: View {
                 }
             } else {
                 if !recipeGroups.isEmpty {
-                    ForEach(recipeGroups) { group in
-                        Section(group.title) {
-                            ForEach(group.items) { item in
-                                itemRow(item)
+                    Section("Recipes") {
+                        ForEach(recipeGroups) { group in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Button {
+                                    toggleRecipeGroup(group.id)
+                                } label: {
+                                    HStack {
+                                        Text(group.title)
+                                            .font(.headline)
+                                        Spacer()
+                                        Text("\(group.items.count) items")
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                        Image(systemName: expandedRecipeIds.contains(group.id) ? "chevron.up" : "chevron.down")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+
+                                if expandedRecipeIds.contains(group.id) {
+                                    ForEach(group.items) { item in
+                                        itemRow(item)
+                                    }
+                                }
                             }
+                            .padding(.vertical, 4)
                         }
                     }
                 }
@@ -113,6 +135,14 @@ struct ShoppingListView: View {
             checkedIDs.remove(id)
         } else {
             checkedIDs.insert(id)
+        }
+    }
+
+    private func toggleRecipeGroup(_ id: String) {
+        if expandedRecipeIds.contains(id) {
+            expandedRecipeIds.remove(id)
+        } else {
+            expandedRecipeIds.insert(id)
         }
     }
 

@@ -1,16 +1,19 @@
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
-    @AppStorage("notificationsEnabled") private var notificationsEnabled = true
-    @AppStorage("locationEnabled") private var locationEnabled = true
-    @AppStorage("darkModeEnabled") private var darkModeEnabled = false
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         List {
             Section("Preferences") {
-                Toggle("Enable Notifications", isOn: $notificationsEnabled)
-                Toggle("Use Location Services", isOn: $locationEnabled)
-                Toggle("Dark Mode", isOn: $darkModeEnabled)
+                Button("Notification Settings") {
+                    openAppSettings()
+                }
+
+                Button("Location Services") {
+                    openAppSettings()
+                }
             }
 
             Section("Support") {
@@ -33,5 +36,11 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
+    }
+
+    private func openAppSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            openURL(url)
+        }
     }
 }
