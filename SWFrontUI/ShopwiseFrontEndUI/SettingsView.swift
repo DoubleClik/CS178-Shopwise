@@ -1,4 +1,4 @@
-import SwiftUI
+/*import SwiftUI
 import UIKit
 
 struct SettingsView: View {
@@ -43,4 +43,4 @@ struct SettingsView: View {
             openURL(url)
         }
     }
-}
+}*/
