@@ -227,7 +227,11 @@ struct RecipeView: View {
                     }
                 } label: {
                     let excluded = excludedIngredientsByRecipe[recipe.id] ?? []
-                    let selectedCount = max(0, recipe.ingredientList.count - excluded.count)
+                    let matches = matchesByRecipe[recipe.id] ?? []
+                    let ingredients = matches.isEmpty
+                        ? recipe.ingredientList
+                        : orderedIngredients(from: matches)
+                    let selectedCount = max(0, ingredients.count - excluded.count)
                     VStack(spacing: 4) {
                         Text("\(selectedCount) selected")
                             .font(.footnote)
@@ -301,7 +305,7 @@ struct RecipeView: View {
         return Button { toggleIngredient(recipeId: recipeId, item: item) } label: {
             HStack(spacing: 10) {
                 Image(systemName: isExcluded ? "minus.circle" : "checkmark.circle.fill")
-                    .foregroundStyle(isExcluded ? Color.secondary : Color.green)
+                    .foregroundStyle(isExcluded ? Color.secondary : Theme.secondary)
                 Text(item)
                     .foregroundStyle(isExcluded ? Color.secondary : Color.primary)
                     .strikethrough(isExcluded, color: .secondary)
@@ -356,7 +360,7 @@ struct IngredientMatchRow: View {
             Button(action: onToggle) {
                 HStack(spacing: 10) {
                     Image(systemName: isExcluded ? "minus.circle" : "checkmark.circle.fill")
-                        .foregroundStyle(isExcluded ? Color.secondary : Color.green)
+                        .foregroundStyle(isExcluded ? Color.secondary : Theme.secondary)
                     Text(ingredient)
                         .font(.subheadline)
                         .foregroundStyle(isExcluded ? Color.secondary : Color.primary)
@@ -407,14 +411,14 @@ struct IngredientMatchRow: View {
                         VStack(alignment: .trailing, spacing: 4) {
                             Text(match.displayPrice)
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(Theme.primary)
 
                             Button { onAdd(match) } label: {
                                 Image(systemName: "cart.badge.plus")
                                     .font(.system(size: 14))
                                     .padding(6)
-                                    .background(Color.blue.opacity(0.12))
-                                    .foregroundStyle(.blue)
+                                    .background(Theme.primary.opacity(0.12))
+                                    .foregroundStyle(Theme.primary)
                                     .clipShape(Circle())
                             }
                             .buttonStyle(.plain)

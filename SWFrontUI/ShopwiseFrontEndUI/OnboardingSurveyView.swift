@@ -157,8 +157,8 @@ private struct PreferenceChipGrid: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .frame(maxWidth: .infinity)
-                        .background(isSelected ? Color.blue.opacity(0.18) : Color(.systemGray6))
-                        .foregroundStyle(isSelected ? Color.blue : Color.primary)
+                        .background(isSelected ? Theme.primary.opacity(0.18) : Color(.systemGray6))
+                        .foregroundStyle(isSelected ? Theme.primary : Color.primary)
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)

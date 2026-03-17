@@ -14,7 +14,7 @@ struct StoreAnnotation: Identifiable {
     let locationId: String?
 
     var markerTint: Color {
-        chain == "Walmart" ? .blue : .orange
+        chain == "Walmart" ? Theme.primary : Theme.secondary
     }
     var icon: String {
         chain == "Walmart" ? "cart.fill" : "storefront.fill"

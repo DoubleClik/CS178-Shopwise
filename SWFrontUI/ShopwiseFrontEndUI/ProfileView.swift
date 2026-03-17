@@ -12,7 +12,7 @@ struct ProfileView: View {
                 HStack {
                     Image(systemName: "person.circle.fill")
                         .font(.system(size: 36))
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(Theme.primary)
 
                     VStack(alignment: .leading) {
                         Text(greetingText)

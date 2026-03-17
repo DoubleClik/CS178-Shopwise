@@ -222,12 +222,12 @@ struct ClassifierChip: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(isSelected ? Color.blue.opacity(0.15) : Color(.systemGray6))
-            .foregroundStyle(isSelected ? Color.blue : Color.primary)
+            .background(isSelected ? Theme.primary.opacity(0.15) : Color(.systemGray6))
+            .foregroundStyle(isSelected ? Theme.primary : Color.primary)
             .clipShape(Capsule())
             .overlay(
                 Capsule()
-                    .strokeBorder(isSelected ? Color.blue.opacity(0.4) : Color.clear, lineWidth: 1)
+                    .strokeBorder(isSelected ? Theme.primary.opacity(0.4) : Color.clear, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -289,7 +289,7 @@ struct ProductCard: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .foregroundStyle(.white)
-                .background(Color.blue)
+                .background(Theme.primary)
                 .clipShape(Capsule())
             }
             .buttonStyle(.plain)
