@@ -5,6 +5,7 @@ struct ShoppingListView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var checkedIDs: Set<String> = []
+    @State private var expandedRecipeIds: Set<String> = []
 
     private var checkedTotal: Double {
         cartStore.items
@@ -18,35 +19,51 @@ struct ShoppingListView: View {
 
     var body: some View {
         List {
-            Section("Shopping List") {
-                if cartStore.items.isEmpty {
+            if cartStore.items.isEmpty {
+                Section("Shopping List") {
                     Text("No items to shop for.")
                         .foregroundStyle(.secondary)
-                } else {
-                    ForEach(cartStore.items) { item in
-                        Button {
-                            toggle(item.id)
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: checkedIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
-                                    .imageScale(.large)
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.name)
-                                        .strikethrough(checkedIDs.contains(item.id))
-                                    Text("\(item.quantity) × \(item.unit)")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
+                }
+            } else {
+                if !recipeGroups.isEmpty {
+                    Section("Recipes") {
+                        ForEach(recipeGroups) { group in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Button {
+                                    toggleRecipeGroup(group.id)
+                                } label: {
+                                    HStack {
+                                        Text(group.title)
+                                            .font(.headline)
+                                        Spacer()
+                                        Text("\(group.items.count) items")
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                        Image(systemName: expandedRecipeIds.contains(group.id) ? "chevron.up" : "chevron.down")
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
+                                .buttonStyle(.plain)
 
-                                Spacer()
-
-                                Text(String(format: "$%.2f", item.price * Double(item.quantity)))
-                                    .foregroundStyle(.secondary)
-                                    .monospacedDigit()
+                                if expandedRecipeIds.contains(group.id) {
+                                    ForEach(group.items) { item in
+                                        itemRow(item)
+                                    }
+                                }
                             }
+                            .padding(.vertical, 4)
                         }
-                        .buttonStyle(.plain)
+                    }
+                }
+
+                Section("Individual Items") {
+                    if individualItems.isEmpty {
+                        Text("No individual items")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(individualItems) { item in
+                            itemRow(item)
+                        }
                     }
                 }
             }
@@ -120,4 +137,76 @@ struct ShoppingListView: View {
             checkedIDs.insert(id)
         }
     }
+
+    private func toggleRecipeGroup(_ id: String) {
+        if expandedRecipeIds.contains(id) {
+            expandedRecipeIds.remove(id)
+        } else {
+            expandedRecipeIds.insert(id)
+        }
+    }
+
+    private var recipeGroups: [RecipeGroup] {
+        let items = cartStore.items
+        var groups: [String: RecipeGroup] = [:]
+
+        for item in items {
+            guard let groupId = item.groupId, !groupId.isEmpty else { continue }
+            let title = item.groupTitle ?? "Recipe"
+
+            if let existing = groups[groupId] {
+                var newItems = existing.items
+                newItems.append(item)
+                groups[groupId] = RecipeGroup(id: existing.id, title: existing.title, items: newItems)
+            } else {
+                groups[groupId] = RecipeGroup(id: groupId, title: title, items: [item])
+            }
+        }
+
+        return groups.values
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    private var individualItems: [CartLineItem] {
+        cartStore.items.filter { $0.groupId == nil }
+    }
+
+    @ViewBuilder
+    private func itemRow(_ item: CartLineItem) -> some View {
+        Button {
+            toggle(item.id)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: checkedIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
+                    .imageScale(.large)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.name)
+                        .strikethrough(checkedIDs.contains(item.id))
+                    if !item.unit.isEmpty {
+                        Text("\(item.quantity) × \(item.unit)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("\(item.quantity)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                Text(String(format: "$%.2f", item.price * Double(item.quantity)))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct RecipeGroup: Identifiable {
+    let id: String
+    let title: String
+    let items: [CartLineItem]
 }

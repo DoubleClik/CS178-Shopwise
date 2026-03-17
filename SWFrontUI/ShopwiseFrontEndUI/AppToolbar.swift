@@ -5,18 +5,10 @@ struct AppToolbar: ViewModifier {
         content
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 14) {
-                        NavigationLink {
-                            SettingsView()
-                        } label: {
-                            Image(systemName: "gearshape")
-                        }
-
-                        NavigationLink {
-                            ProfileView()
-                        } label: {
-                            Image(systemName: "person.crop.circle")
-                        }
+                    NavigationLink {
+                        ProfileView()
+                    } label: {
+                        Image(systemName: "person.crop.circle")
                     }
                 }
             }
