@@ -27,6 +27,7 @@ struct SearchView: View {
                 Text("ShopWise")
                     .font(.system(size: 34, weight: .bold))
                     .padding(.top, 6)
+                    .padding(.bottom, 4)
 
                 // Search bar (custom like your right screenshot)
                 HStack(spacing: 10) {
@@ -55,6 +56,7 @@ struct SearchView: View {
                 .padding(.vertical, 12)
                 .background(Color(.systemGray6))
                 .clipShape(RoundedRectangle(cornerRadius: 18))
+                .padding(.bottom, 4)
 
                 // Category chips row
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -240,9 +242,13 @@ struct SearchCategoryChip: View {
                 .font(.subheadline.weight(.semibold))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(isSelected ? Color.blue.opacity(0.18) : Color(.systemGray6))
-                .foregroundStyle(isSelected ? Color.blue : Color.primary)
+                .background(isSelected ? Color.accentColor.opacity(0.18) : Color(.systemGray6))
+                .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
                 .clipShape(Capsule())
+                .overlay(
+                    Capsule()
+                        .stroke(Color.black.opacity(0.04), lineWidth: 1)
+                )
         }
         .buttonStyle(.plain)
     }
@@ -348,6 +354,8 @@ struct ProductCard: View {
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .onTapGesture(perform: onToggle)
 
+                    Divider()
+
                     if let descriptionText, !descriptionText.isEmpty {
                         Text(descriptionText)
                             .font(.subheadline)
@@ -370,7 +378,14 @@ struct ProductCard: View {
             }
         }
         .padding(14)
-        .background(Color(.systemGray6).opacity(0.65))
-        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(.systemGray6).opacity(0.65))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.black.opacity(0.04), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 3)
     }
 }

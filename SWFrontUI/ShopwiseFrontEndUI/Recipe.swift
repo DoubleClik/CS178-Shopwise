@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 
 struct RecipeRow: Identifiable, Codable, Hashable {
     let id: Int
@@ -62,8 +63,33 @@ struct RecipeRow: Identifiable, Codable, Hashable {
         }
 
         let normalized = instructions
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+
+        let paragraphs = normalized
+            .components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        if paragraphs.count >= 2 {
+            return paragraphs
+        }
+
+        if #available(iOS 12.0, *) {
+            let tokenizer = NLTokenizer(unit: .sentence)
+            tokenizer.string = normalized
+            var steps: [String] = []
+            tokenizer.enumerateTokens(in: normalized.startIndex..<normalized.endIndex) { range, _ in
+                let sentence = String(normalized[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !sentence.isEmpty {
+                    steps.append(sentence)
+                }
+                return true
+            }
+            if !steps.isEmpty {
+                return steps
+            }
+        }
 
         return normalized
             .components(separatedBy: CharacterSet(charactersIn: ".!?"))

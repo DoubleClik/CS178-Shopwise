@@ -128,13 +128,6 @@ struct RecipeView: View {
                     Text(recipe.title)
                         .font(.headline)
                         .lineLimit(2)
-
-                    /*HStack(spacing: 8) {
-                        Label(recipe.difficultyText, systemImage: "chart.bar")
-                        Label("\(recipe.estimatedMinutes) min", systemImage: "clock")
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)*/
                 }
 
                 Spacer()
@@ -161,7 +154,9 @@ struct RecipeView: View {
                         .padding(.vertical, 2)
 
                     Button {
-                        toggleInstructions(recipe.id)
+                        withAnimation(.snappy){
+                            toggleInstructions(recipe.id)
+                        }
                     } label: {
                         HStack {
                             Text("Instructions")
@@ -176,7 +171,7 @@ struct RecipeView: View {
                     if expandedInstructionIds.contains(recipe.id) {
                         if !recipe.instructionSteps.isEmpty {
                             ForEach(Array(recipe.instructionSteps.enumerated()), id: \.offset) { index, step in
-                                Text("\(index + 1). \(step)")
+                                Text("Step \(index + 1): \(step)")
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                             }
@@ -200,8 +195,15 @@ struct RecipeView: View {
                         )
                     }
                 } label: {
-                    Label("Add Selected Ingredients", systemImage: "cart.badge.plus")
-                        .frame(maxWidth: .infinity)
+                    let excluded = excludedIngredientsByRecipe[recipe.id] ?? []
+                    let selectedCount = max(0, recipe.ingredientList.count - excluded.count)
+                    VStack(spacing: 4) {
+                        Text("\(selectedCount) selected")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Label("Add Selected Ingredients", systemImage: "cart.badge.plus")
+                    }
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
             }
