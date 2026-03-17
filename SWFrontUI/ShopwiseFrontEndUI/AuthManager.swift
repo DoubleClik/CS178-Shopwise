@@ -1,4 +1,5 @@
 import Foundation
+import CoreLocation
 import SwiftUI
 import Combine
 
@@ -337,41 +338,92 @@ struct SupabaseError: Codable {
 }
 
 
-// ------ For Walmart Items ------
+// MARK: - Kroger Items
+
+struct KrogerItem: Codable, Identifiable {
+    let productId: Int
+    let name: String
+    let brand: String?
+    let price: String?        // "1.49;1.49;2.49" — index-aligned with store_ids
+    let classifier: String?
+    let categories: String?
+    let image_url: String?
+    let size: String?
+    let search_keyword: String?
+    let store_ids: String?
+
+    var id: Int { productId }
+
+    var priceList: [Double] {
+        guard let price else { return [] }
+        return price.split(separator: ";")
+            .compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+    }
+
+    var storeIdList: [String] {
+        guard let store_ids else { return [] }
+        return store_ids.split(separator: ";")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    var minPrice: Double? {
+        priceList.filter { $0 > 0 }.min()
+    }
+
+    func price(forStoreId storeId: String) -> Double? {
+        guard let index = storeIdList.firstIndex(of: storeId),
+              index < priceList.count else { return nil }
+        return priceList[index]
+    }
+
+    func displayPrice(forStoreId storeId: String? = nil) -> String {
+        let p: Double?
+        if let storeId {
+            p = price(forStoreId: storeId) ?? minPrice
+        } else {
+            p = minPrice
+        }
+        guard let p else { return "Price N/A" }
+        return String(format: "$%.2f", p)
+    }
+
+    var imageURL: URL? {
+        guard let img = image_url, !img.isEmpty else { return nil }
+        return URL(string: img)
+    }
+}
 
 extension AuthManager {
-    func fetchWalmartItems(
+    func fetchKrogerItems(
         search: String? = nil,
-        ingredientOnly: Bool? = nil,
+        classifier: String? = nil,
         limit: Int = 50,
         offset: Int = 0
-    ) async throws -> [WalmartItem] {
-
-        let tableName = "classified_ingredients_aa"  // <-- CHANGE THIS
-
+    ) async throws -> [KrogerItem] {
         let base = supabaseURL
             .appendingPathComponent("rest/v1")
-            .appendingPathComponent(tableName)
+            .appendingPathComponent("kroger_ingredients2")
 
         var comps = URLComponents(url: base, resolvingAgainstBaseURL: false)!
         var q: [URLQueryItem] = [
             URLQueryItem(
                 name: "select",
-                value: "id,name,ingredient,classifiers,retail_price,thumbnailImage,mediumImage,largeImage,color"
+                value: "productId,name,brand,price,classifier,categories,image_url,size,search_keyword,store_ids"
             ),
-            URLQueryItem(name: "limit", value: "\(limit)"),
+            URLQueryItem(name: "limit",  value: "\(limit)"),
             URLQueryItem(name: "offset", value: "\(offset)"),
-            URLQueryItem(name: "order", value: "id.asc")
+            URLQueryItem(name: "order",  value: "productId.asc"),
         ]
 
-        if let s = search?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !s.isEmpty {
-            q.append(URLQueryItem(name: "name", value: "ilike.*\(s)*"))
+        if let s = search?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            q.append(URLQueryItem(
+                name: "or",
+                value: "(name.ilike.*\(s)*,search_keyword.ilike.*\(s)*)"
+            ))
         }
 
-        if let ingredientOnly {
-            // PostgREST boolean filter
-            q.append(URLQueryItem(name: "ingredient", value: "eq.\(ingredientOnly ? "true" : "false")"))
+        if let cls = classifier, !cls.isEmpty {
+            q.append(URLQueryItem(name: "classifier", value: "eq.\(cls)"))
         }
 
         comps.queryItems = q
@@ -384,7 +436,14 @@ extension AuthManager {
             bearerToken: accessToken
         )
 
-        return try JSONDecoder().decode([WalmartItem].self, from: data)
+        do {
+            return try JSONDecoder().decode([KrogerItem].self, from: data)
+        } catch {
+            let raw = String(data: data, encoding: .utf8) ?? "<non-utf8>"
+            print("❌ KrogerItem decode error: \(error)")
+            print("❌ Raw JSON: \(raw.prefix(500))")
+            throw error
+        }
     }
 }
 
@@ -502,5 +561,140 @@ extension AuthManager {
         )
 
         return try JSONDecoder().decode([RecipeRow].self, from: data)
+    }
+}
+
+
+// MARK: - Recipe Matches
+
+struct RecipeMatch: Codable, Identifiable {
+    let id: Int
+    let recipe_id: Int
+    let raw_ingredient: String
+    let matched_name: String?
+    let matched_product_id: String?
+    let matched_image: String?
+    let matched_size: String?
+    let min_price: Double?
+    let price_raw: String?
+    let store_ids: String?
+    let score: Double?
+    let confidence: String?
+    let match_rank: Int?
+
+    var displayPrice: String {
+        guard let p = min_price else { return "Price N/A" }
+        return String(format: "$%.2f", p)
+    }
+
+    var imageURL: URL? {
+        guard let img = matched_image, !img.isEmpty else { return nil }
+        return URL(string: img)
+    }
+}
+
+extension AuthManager {
+    func fetchRecipeMatches(recipeId: Int) async throws -> [RecipeMatch] {
+        let base = supabaseURL
+            .appendingPathComponent("rest/v1")
+            .appendingPathComponent("recipe_matches")
+
+        var comps = URLComponents(url: base, resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            URLQueryItem(name: "select", value: "id,recipe_id,raw_ingredient,matched_name,matched_product_id,matched_image,matched_size,min_price,price_raw,store_ids,score,confidence,match_rank"),
+            URLQueryItem(name: "recipe_id",   value: "eq.\(recipeId)"),
+            URLQueryItem(name: "match_rank",  value: "not.is.null"),
+            URLQueryItem(name: "order",       value: "raw_ingredient.asc,match_rank.asc"),
+        ]
+
+        guard let url = comps.url else { throw URLError(.badURL) }
+
+        let (data, _) = try await request(
+            url: url, method: "GET",
+            jsonBody: Optional<String>.none,
+            bearerToken: accessToken
+        )
+
+        do {
+            return try JSONDecoder().decode([RecipeMatch].self, from: data)
+        } catch {
+            let raw = String(data: data, encoding: .utf8) ?? "<non-utf8>"
+            print("❌ RecipeMatch decode error: \(error)")
+            print("❌ Raw: \(raw.prefix(300))")
+            throw error
+        }
+    }
+}
+
+// MARK: - Kroger Store Locations
+
+struct KrogerStore: Codable, Identifiable {
+    let locationId: Int
+    let name: String?
+    let chain: String?
+    let address_line1: String?
+    let address_city: String?
+    let address_state: String?
+    let address_zipCode: Int?
+    let geo_latitude: Double?
+    let geo_longitude: Double?
+
+    var id: Int { locationId }
+
+    var displayName: String { name ?? "Kroger Store" }
+
+    var displayAddress: String {
+        [address_line1, address_city, address_state]
+            .compactMap { $0 }.filter { !$0.isEmpty }
+            .joined(separator: ", ")
+    }
+
+    var coordinate: CLLocationCoordinate2D? {
+        guard let lat = geo_latitude, let lng = geo_longitude else { return nil }
+        return CLLocationCoordinate2D(latitude: lat, longitude: lng)
+    }
+
+    func distanceMiles(from coord: CLLocationCoordinate2D) -> Double? {
+        guard let c = coordinate else { return nil }
+        let loc1 = CLLocation(latitude: c.latitude, longitude: c.longitude)
+        let loc2 = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
+        return loc1.distance(from: loc2) / 1609.34
+    }
+}
+
+extension AuthManager {
+    func fetchNearbyKrogerStores(
+        near coordinate: CLLocationCoordinate2D,
+        radiusDegrees: Double = 0.2
+    ) async throws -> [KrogerStore] {
+        let base = supabaseURL
+            .appendingPathComponent("rest/v1")
+            .appendingPathComponent("kroger_locations")
+
+        var comps = URLComponents(url: base, resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            URLQueryItem(name: "select", value: "locationId,name,chain,address_line1,address_city,address_state,address_zipCode,geo_latitude,geo_longitude"),
+            URLQueryItem(name: "geo_latitude",  value: "gte.\(coordinate.latitude  - radiusDegrees)"),
+            URLQueryItem(name: "geo_latitude",  value: "lte.\(coordinate.latitude  + radiusDegrees)"),
+            URLQueryItem(name: "geo_longitude", value: "gte.\(coordinate.longitude - radiusDegrees)"),
+            URLQueryItem(name: "geo_longitude", value: "lte.\(coordinate.longitude + radiusDegrees)"),
+            URLQueryItem(name: "limit", value: "50"),
+        ]
+
+        guard let url = comps.url else { throw URLError(.badURL) }
+
+        let (data, _) = try await request(
+            url: url, method: "GET",
+            jsonBody: Optional<String>.none,
+            bearerToken: accessToken
+        )
+
+        let stores = try JSONDecoder().decode([KrogerStore].self, from: data)
+        return stores
+            .filter { $0.coordinate != nil }
+            .sorted { (a: KrogerStore, b: KrogerStore) -> Bool in
+                (a.distanceMiles(from: coordinate) ?? 999) <
+                (b.distanceMiles(from: coordinate) ?? 999)
+            }
     }
 }
