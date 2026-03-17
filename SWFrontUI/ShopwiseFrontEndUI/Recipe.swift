@@ -56,6 +56,21 @@ struct RecipeRow: Identifiable, Codable, Hashable {
         return items.isEmpty ? nil : items
     }
 
+    var instructionSteps: [String] {
+        guard let instructions, !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return []
+        }
+
+        let normalized = instructions
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+
+        return normalized
+            .components(separatedBy: CharacterSet(charactersIn: ".!?"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
     /*var difficultyText: String {
         let count = ingredientList.count
         if count <= 5 { return "Easy" }

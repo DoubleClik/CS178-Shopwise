@@ -16,6 +16,7 @@ struct RecipeView: View {
     @State private var hasMore = true
     @State private var isLoadingMore = false
     @State private var excludedIngredientsByRecipe: [Int: Set<String>] = [:]
+    @State private var expandedInstructionIds: Set<Int> = []
     
     private var filtered: [RecipeRow] {
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -159,12 +160,32 @@ struct RecipeView: View {
                     Divider()
                         .padding(.vertical, 2)
 
-                    Text("Instructions")
-                        .font(.headline)
+                    Button {
+                        toggleInstructions(recipe.id)
+                    } label: {
+                        HStack {
+                            Text("Instructions")
+                                .font(.headline)
+                            Spacer()
+                            Image(systemName: expandedInstructionIds.contains(recipe.id) ? "chevron.up" : "chevron.down")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
 
-                    Text(instructions)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    if expandedInstructionIds.contains(recipe.id) {
+                        if !recipe.instructionSteps.isEmpty {
+                            ForEach(Array(recipe.instructionSteps.enumerated()), id: \.offset) { index, step in
+                                Text("\(index + 1). \(step)")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Text(instructions)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
 
                 Button {
@@ -195,6 +216,14 @@ struct RecipeView: View {
             set.insert(item)
         }
         excludedIngredientsByRecipe[recipeId] = set
+    }
+
+    private func toggleInstructions(_ recipeId: Int) {
+        if expandedInstructionIds.contains(recipeId) {
+            expandedInstructionIds.remove(recipeId)
+        } else {
+            expandedInstructionIds.insert(recipeId)
+        }
     }
 
     private func ingredientRow(recipeId: Int, item: String) -> some View {
