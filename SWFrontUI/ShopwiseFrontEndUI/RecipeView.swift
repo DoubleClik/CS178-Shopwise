@@ -16,6 +16,7 @@ struct RecipeView: View {
     @State private var hasMore = true
     @State private var isLoadingMore = false
     @State private var excludedIngredientsByRecipe: [Int: Set<String>] = [:]
+    @State private var expandedInstructionIds: Set<Int> = []
 
     // Kroger matches keyed by recipe_id
     @State private var matchesByRecipe: [Int: [RecipeMatch]] = [:]
@@ -140,15 +141,11 @@ struct RecipeView: View {
                     .padding(.vertical, 8)
 
                 } else if matches.isEmpty {
-                    // No pre-computed matches — plain list fallback
                     ForEach(recipe.ingredientList, id: \.self) { item in
                         ingredientRow(recipeId: recipe.id, item: item)
                     }
 
                 } else {
-                    // KEY FIX: drive display from recipe_matches.raw_ingredient
-                    // NOT from recipe.ingredientList — those come from different DB
-                    // columns (Ingredients vs Cleaned_Ingredients) and won't match
                     let grouped = groupedMatches(matches)
                     let ingredients = orderedIngredients(from: matches)
 
@@ -174,8 +171,33 @@ struct RecipeView: View {
                 if let instructions = recipe.instructions,
                    !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Divider().padding(.vertical, 2)
-                    Text("Instructions").font(.headline)
-                    Text(instructions).font(.subheadline).foregroundStyle(.secondary)
+
+                    Button {
+                        withAnimation(.snappy) {
+                            toggleInstructions(recipe.id)
+                        }
+                    } label: {
+                        HStack {
+                            Text("Instructions")
+                                .font(.headline)
+                            Spacer()
+                            Image(systemName: expandedInstructionIds.contains(recipe.id) ? "chevron.up" : "chevron.down")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+
+                    if expandedInstructionIds.contains(recipe.id) {
+                        if !recipe.instructionSteps.isEmpty {
+                            ForEach(Array(recipe.instructionSteps.enumerated()), id: \.offset) { index, step in
+                                Text("Step \(index + 1): \(step)")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Text(instructions).font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }
                 }
 
                 Button {
@@ -204,8 +226,15 @@ struct RecipeView: View {
                         }
                     }
                 } label: {
-                    Label("Add Selected Ingredients", systemImage: "cart.badge.plus")
-                        .frame(maxWidth: .infinity)
+                    let excluded = excludedIngredientsByRecipe[recipe.id] ?? []
+                    let selectedCount = max(0, recipe.ingredientList.count - excluded.count)
+                    VStack(spacing: 4) {
+                        Text("\(selectedCount) selected")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Label("Add Selected Ingredients", systemImage: "cart.badge.plus")
+                    }
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -214,7 +243,6 @@ struct RecipeView: View {
 
     // MARK: - Helpers
 
-    /// Groups matches by raw_ingredient. Already sorted by match_rank from Supabase.
     private func groupedMatches(_ matches: [RecipeMatch]) -> [String: [RecipeMatch]] {
         var dict: [String: [RecipeMatch]] = [:]
         for match in matches {
@@ -223,7 +251,6 @@ struct RecipeView: View {
         return dict
     }
 
-    /// Returns unique raw_ingredients in their original DB order.
     private func orderedIngredients(from matches: [RecipeMatch]) -> [String] {
         var seen = Set<String>()
         var result: [String] = []
