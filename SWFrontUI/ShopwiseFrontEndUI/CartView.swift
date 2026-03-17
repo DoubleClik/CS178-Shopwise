@@ -7,6 +7,31 @@ struct CartView: View {
 
     var body: some View {
         List {
+            if !cartStore.items.isEmpty {
+                Section("Summary") {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Total Items")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Text("\(cartStore.itemCount)")
+                                .font(.title3.weight(.semibold))
+                        }
+
+                        Spacer()
+
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("Total")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Text(String(format: "$%.2f", cartStore.total))
+                                .font(.title3.weight(.semibold))
+                                .monospacedDigit()
+                        }
+                    }
+                }
+            }
+
             if cartStore.items.isEmpty {
                 Section("Items") {
                     Text("Cart is empty")
@@ -16,17 +41,19 @@ struct CartView: View {
                 if !recipeGroups.isEmpty {
                     Section("Recipes") {
                         ForEach(recipeGroups, id: \.id) { group in
-                            VStack(alignment: .leading, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 10) {
                                 Button {
                                     toggle(group.id)
                                 } label: {
-                                    HStack {
-                                        Text(group.title)
-                                            .font(.headline)
+                                    HStack(alignment: .firstTextBaseline) {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(group.title)
+                                                .font(.headline)
+                                            Text("\(group.items.count) items • \(formatCurrency(groupSubtotal(for: group)))")
+                                                .font(.subheadline)
+                                                .foregroundStyle(.secondary)
+                                        }
                                         Spacer()
-                                        Text("\(group.items.count) items")
-                                            .font(.subheadline)
-                                            .foregroundStyle(.secondary)
                                         Image(systemName: expandedRecipeIds.contains(group.id) ? "chevron.up" : "chevron.down")
                                             .foregroundStyle(.secondary)
                                     }
@@ -34,12 +61,27 @@ struct CartView: View {
                                 .buttonStyle(.plain)
 
                                 if expandedRecipeIds.contains(group.id) {
-                                    ForEach(group.items) { item in
+                                    Divider()
+                                    ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
                                         itemRow(item)
+                                        if index != group.items.count - 1 {
+                                            Divider()
+                                        }
                                     }
                                 }
                             }
-                            .padding(.vertical, 4)
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(Color(.secondarySystemBackground))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .stroke(Color.black.opacity(0.04), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 3)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                         }
                     }
                 }
@@ -58,15 +100,6 @@ struct CartView: View {
                             }
                         }
                     }
-                }
-            }
-
-            Section("Summary") {
-                HStack {
-                    Text("Total")
-                    Spacer()
-                    Text(String(format: "$%.2f", cartStore.total))
-                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -168,6 +201,14 @@ struct CartView: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private func groupSubtotal(for group: RecipeGroup) -> Double {
+        group.items.reduce(0) { $0 + ($1.price * Double($1.quantity)) }
+    }
+
+    private func formatCurrency(_ value: Double) -> String {
+        String(format: "$%.2f", value)
     }
 }
 
