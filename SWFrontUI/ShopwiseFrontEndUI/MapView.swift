@@ -13,11 +13,43 @@ struct StoreAnnotation: Identifiable {
     let coordinate: CLLocationCoordinate2D
     let locationId: String?
 
-    var markerTint: Color {
-        chain == "Walmart" ? Theme.primary : Theme.secondary
+    /// Name of the image asset in Assets.xcassets
+    var logoAsset: String {
+        switch chain {
+        case "Walmart":       return "logo_walmart"
+        case "Ralphs":        return "logo_ralphs"
+        case "Food 4 Less":   return "logo_food4less"
+        case "Stater Bros.":  return "logo_stater"
+        case "Sprouts":       return "logo_sprouts"
+        case "ALDI":          return "logo_aldi"
+        case "Smart & Final": return "logo_smartfinal"
+        case "99 Ranch":      return "logo_99ranch"
+        default:              return ""
+        }
     }
+
+    var markerTint: Color {
+        switch chain {
+        case "Walmart":       return .blue
+        case "Ralphs", "Food 4 Less": return .orange
+        case "Stater Bros.":  return .red
+        case "Sprouts":       return .green
+        case "ALDI":          return .purple
+        case "Smart & Final": return .cyan
+        case "99 Ranch":      return Color(red: 0.9, green: 0.3, blue: 0.1)
+        default:              return .gray
+        }
+    }
+
     var icon: String {
-        chain == "Walmart" ? "cart.fill" : "storefront.fill"
+        switch chain {
+        case "Walmart":       return "cart.fill"
+        case "Sprouts":       return "leaf.fill"
+        case "99 Ranch":      return "globe.asia.australia.fill"
+        case "ALDI":          return "dollarsign.circle.fill"
+        case "Smart & Final": return "bag.fill"
+        default:              return "storefront.fill"
+        }
     }
 }
 
@@ -25,6 +57,7 @@ struct StoreAnnotation: Identifiable {
 // Kroger stores are hardcoded since kroger_locations table needs to be populated first.
 // Ralphs and Food 4 Less are both Kroger-owned brands in SoCal.
 
+// MARK: - Ralphs / Food 4 Less (Kroger family)
 private let krogerStoresNearUCR: [StoreAnnotation] = [
     StoreAnnotation(id: "ralphs_university", name: "Ralphs", chain: "Ralphs",
                     address: "1520 University Ave, Riverside, CA 92507",
@@ -47,6 +80,74 @@ private let krogerStoresNearUCR: [StoreAnnotation] = [
     StoreAnnotation(id: "ralphs_magnolia2", name: "Ralphs", chain: "Ralphs",
                     address: "12061 Magnolia Ave, Riverside, CA 92503",
                     coordinate: CLLocationCoordinate2D(latitude: 33.9993, longitude: -117.4229), locationId: nil),
+]
+
+// MARK: - Stater Bros.
+private let staterBrosStoresNearUCR: [StoreAnnotation] = [
+    StoreAnnotation(id: "stater_1", name: "Stater Bros.", chain: "Stater Bros.",
+                    address: "2841 Mary St, Riverside, CA 92506",
+                    coordinate: CLLocationCoordinate2D(latitude: 33.9859162, longitude: -117.341186), locationId: nil),
+    StoreAnnotation(id: "stater_2", name: "Stater Bros.", chain: "Stater Bros.",
+                    address: "4488 Magnolia Ave, Riverside, CA 92501",
+                    coordinate: CLLocationCoordinate2D(latitude: 33.934523, longitude: -117.3865065), locationId: nil),
+    StoreAnnotation(id: "stater_3", name: "Stater Bros.", chain: "Stater Bros.",
+                    address: "315 E Alessandro Blvd, Riverside, CA 92508",
+                    coordinate: CLLocationCoordinate2D(latitude: 33.9142125, longitude: -117.3281308), locationId: nil),
+    StoreAnnotation(id: "stater_4", name: "Stater Bros.", chain: "Stater Bros.",
+                    address: "12270 Sycamore Canyon Rd, Riverside, CA 92503",
+                    coordinate: CLLocationCoordinate2D(latitude: 33.9483928, longitude: -117.2622614), locationId: nil),
+    StoreAnnotation(id: "stater_5", name: "Stater Bros.", chain: "Stater Bros.",
+                    address: "4680 La Sierra Ave, Riverside, CA 92505",
+                    coordinate: CLLocationCoordinate2D(latitude: 33.9976104, longitude: -117.4055226), locationId: nil),
+    StoreAnnotation(id: "stater_6", name: "Stater Bros.", chain: "Stater Bros.",
+                    address: "2995 Iowa Ave, Riverside, CA 92507",
+                    coordinate: CLLocationCoordinate2D(latitude: 34.0327531, longitude: -117.3203453), locationId: nil),
+]
+
+// MARK: - Sprouts Farmers Market
+private let sproutsStoresNearUCR: [StoreAnnotation] = [
+    StoreAnnotation(id: "sprouts_1", name: "Sprouts Farmers Market", chain: "Sprouts",
+                    address: "475 E Alessandro Blvd, Riverside, CA 92508",
+                    coordinate: CLLocationCoordinate2D(latitude: 33.9139385, longitude: -117.3233031), locationId: nil),
+    StoreAnnotation(id: "sprouts_2", name: "Sprouts Farmers Market", chain: "Sprouts",
+                    address: "12630 Day St, Moreno Valley, CA 92553",
+                    coordinate: CLLocationCoordinate2D(latitude: 33.942023, longitude: -117.242369), locationId: nil),
+]
+
+// MARK: - ALDI
+private let aldiStoresNearUCR: [StoreAnnotation] = [
+    StoreAnnotation(id: "aldi_1", name: "ALDI", chain: "ALDI",
+                    address: "3750 Tyler St, Riverside, CA 92503",
+                    coordinate: CLLocationCoordinate2D(latitude: 33.936734, longitude: -117.276131), locationId: nil),
+    StoreAnnotation(id: "aldi_2", name: "ALDI", chain: "ALDI",
+                    address: "13460 Perris Blvd, Moreno Valley, CA 92553",
+                    coordinate: CLLocationCoordinate2D(latitude: 33.910493, longitude: -117.461808), locationId: nil),
+    StoreAnnotation(id: "aldi_3", name: "ALDI", chain: "ALDI",
+                    address: "1290 W Colton Ave, Redlands, CA 92374",
+                    coordinate: CLLocationCoordinate2D(latitude: 34.064855, longitude: -117.272675), locationId: nil),
+]
+
+// MARK: - Smart & Final
+private let smartFinalStoresNearUCR: [StoreAnnotation] = [
+    StoreAnnotation(id: "smartfinal_1", name: "Smart & Final", chain: "Smart & Final",
+                    address: "5202 Arlington Ave, Riverside, CA 92504",
+                    coordinate: CLLocationCoordinate2D(latitude: 33.9444932, longitude: -117.4159), locationId: nil),
+    StoreAnnotation(id: "smartfinal_2", name: "Smart & Final", chain: "Smart & Final",
+                    address: "3310 Vine St, Riverside, CA 92507",
+                    coordinate: CLLocationCoordinate2D(latitude: 33.9414981, longitude: -117.2803836), locationId: nil),
+    StoreAnnotation(id: "smartfinal_3", name: "Smart & Final", chain: "Smart & Final",
+                    address: "2744 Canyon Springs Pkwy, Riverside, CA 92507",
+                    coordinate: CLLocationCoordinate2D(latitude: 33.9834495, longitude: -117.3650503), locationId: nil),
+]
+
+// MARK: - 99 Ranch Market
+private let ranchMarketStoresNearUCR: [StoreAnnotation] = [
+    StoreAnnotation(id: "ranch_1", name: "99 Ranch Market", chain: "99 Ranch",
+                    address: "430 McKinley St, Corona, CA 92879",
+                    coordinate: CLLocationCoordinate2D(latitude: 33.8886384, longitude: -117.5218049), locationId: nil),
+    StoreAnnotation(id: "ranch_2", name: "99 Ranch Market", chain: "99 Ranch",
+                    address: "4956 Hamner Ave, Eastvale, CA 91752",
+                    coordinate: CLLocationCoordinate2D(latitude: 33.9988899, longitude: -117.5559616), locationId: nil),
 ]
 
 private let walmartStoresNearUCR: [StoreAnnotation] = [
@@ -93,7 +194,16 @@ struct MapView: View {
     @State private var selectedStore: StoreAnnotation? = nil
     @State private var errorText: String? = nil
 
-    private var allStores: [StoreAnnotation] { krogerStoresNearUCR + walmartStoresNearUCR }
+    // Collapsible section state
+    @State private var krogerExpanded    = true
+    @State private var walmartExpanded   = false
+    @State private var staterExpanded    = false
+    @State private var sproutsExpanded   = false
+    @State private var aldiExpanded      = false
+    @State private var smartFinalExpanded = false
+    @State private var ranchExpanded     = false
+
+    private var allStores: [StoreAnnotation] { krogerStoresNearUCR + walmartStoresNearUCR + staterBrosStoresNearUCR + sproutsStoresNearUCR + aldiStoresNearUCR + smartFinalStoresNearUCR + ranchMarketStoresNearUCR }
     private var centerCoordinate: CLLocationCoordinate2D { locationManager.userLocation ?? ucrCoordinate }
 
     var body: some View {
@@ -102,6 +212,11 @@ struct MapView: View {
             if let store = selectedStore { selectedStoreSection(store) }
             krogerSection
             walmartSection
+            staterBrosSection
+            sproutsSection
+            aldiSection
+            smartFinalSection
+            ranchMarketSection
             locationSection
         }
         .listStyle(.plain)
@@ -157,9 +272,23 @@ struct MapView: View {
             CardContainer {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 10) {
-                        Image(systemName: store.icon)
-                            .font(.title2)
-                            .foregroundStyle(store.markerTint)
+                        let cardAsset = storeLogoAsset(for: store.chain)
+                        if let cardAsset, UIImage(named: cardAsset) != nil {
+                            Image(cardAsset)
+                                .resizable()
+                                .scaledToFit()
+                                .padding(4)
+                                .frame(width: 44, height: 44)
+                                .background(Color(.systemGray6))
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        } else {
+                            Image(systemName: store.icon)
+                                .font(.title2)
+                                .foregroundStyle(store.markerTint)
+                                .frame(width: 44, height: 44)
+                                .background(Color(.systemGray6))
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
                         VStack(alignment: .leading, spacing: 2) {
                             Text(store.name).font(.headline)
                             Text(store.chain).font(.subheadline).foregroundStyle(.secondary)
@@ -189,14 +318,72 @@ struct MapView: View {
     }
 
     private var krogerSection: some View {
-        Section("Kroger Stores Nearby") {
-            ForEach(krogerStoresNearUCR) { store in storeRow(store) }
+        Section {
+            DisclosureGroup(isExpanded: $krogerExpanded) {
+                ForEach(krogerStoresNearUCR) { store in storeRow(store) }
+            } label: {
+                sectionHeader(title: "Kroger Stores Nearby", count: krogerStoresNearUCR.count, isExpanded: krogerExpanded)
+            }
         }
     }
 
     private var walmartSection: some View {
-        Section("Walmart Stores Nearby") {
-            ForEach(walmartStoresNearUCR) { store in storeRow(store) }
+        Section {
+            DisclosureGroup(isExpanded: $walmartExpanded) {
+                ForEach(walmartStoresNearUCR) { store in storeRow(store) }
+            } label: {
+                sectionHeader(title: "Walmart Stores Nearby", count: walmartStoresNearUCR.count, isExpanded: walmartExpanded)
+            }
+        }
+    }
+
+    private var staterBrosSection: some View {
+        Section {
+            DisclosureGroup(isExpanded: $staterExpanded) {
+                ForEach(staterBrosStoresNearUCR) { store in storeRow(store) }
+            } label: {
+                sectionHeader(title: "Stater Bros. Stores Nearby", count: staterBrosStoresNearUCR.count, isExpanded: staterExpanded)
+            }
+        }
+    }
+
+    private var sproutsSection: some View {
+        Section {
+            DisclosureGroup(isExpanded: $sproutsExpanded) {
+                ForEach(sproutsStoresNearUCR) { store in storeRow(store) }
+            } label: {
+                sectionHeader(title: "Sprouts Nearby", count: sproutsStoresNearUCR.count, isExpanded: sproutsExpanded)
+            }
+        }
+    }
+
+    private var aldiSection: some View {
+        Section {
+            DisclosureGroup(isExpanded: $aldiExpanded) {
+                ForEach(aldiStoresNearUCR) { store in storeRow(store) }
+            } label: {
+                sectionHeader(title: "ALDI Stores Nearby", count: aldiStoresNearUCR.count, isExpanded: aldiExpanded)
+            }
+        }
+    }
+
+    private var smartFinalSection: some View {
+        Section {
+            DisclosureGroup(isExpanded: $smartFinalExpanded) {
+                ForEach(smartFinalStoresNearUCR) { store in storeRow(store) }
+            } label: {
+                sectionHeader(title: "Smart & Final Nearby", count: smartFinalStoresNearUCR.count, isExpanded: smartFinalExpanded)
+            }
+        }
+    }
+
+    private var ranchMarketSection: some View {
+        Section {
+            DisclosureGroup(isExpanded: $ranchExpanded) {
+                ForEach(ranchMarketStoresNearUCR) { store in storeRow(store) }
+            } label: {
+                sectionHeader(title: "99 Ranch Market Nearby", count: ranchMarketStoresNearUCR.count, isExpanded: ranchExpanded)
+            }
         }
     }
 
@@ -210,6 +397,25 @@ struct MapView: View {
         }
     }
 
+    // MARK: - Section header
+
+    private func sectionHeader(title: String, count: Int, isExpanded: Bool) -> some View {
+        HStack {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+            Spacer()
+            Text("\(count)")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Color.blue.opacity(0.8))
+                .clipShape(Capsule())
+        }
+        .contentShape(Rectangle())
+    }
+
     // MARK: - Store row
 
     private func storeRow(_ store: StoreAnnotation) -> some View {
@@ -218,9 +424,23 @@ struct MapView: View {
             focusOn(store.coordinate)
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: store.icon)
-                    .foregroundStyle(store.markerTint)
-                    .frame(width: 28)
+                let rowAsset = storeLogoAsset(for: store.chain)
+                if let rowAsset, UIImage(named: rowAsset) != nil {
+                    Image(rowAsset)
+                        .resizable()
+                        .scaledToFit()
+                        .padding(4)
+                        .frame(width: 38, height: 38)
+                        .background(Color(.systemGray6))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else {
+                    Image(systemName: store.icon)
+                        .font(.system(size: 18))
+                        .foregroundStyle(store.markerTint)
+                        .frame(width: 38, height: 38)
+                        .background(Color(.systemGray6))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(store.name).font(.subheadline.weight(.medium))
                     if !store.address.isEmpty {
@@ -318,15 +538,39 @@ struct StorePin: View {
     let store: StoreAnnotation
     let isSelected: Bool
 
+    private let size: CGFloat = 40
+    private let selectedSize: CGFloat = 52
+
     var body: some View {
+        let pinSize = isSelected ? selectedSize : size
+
         ZStack {
+            // White circle background
             Circle()
-                .fill(store.markerTint)
-                .frame(width: isSelected ? 44 : 36, height: isSelected ? 44 : 36)
-                .shadow(radius: isSelected ? 6 : 2)
-            Image(systemName: store.icon)
-                .font(.system(size: isSelected ? 18 : 14))
-                .foregroundStyle(.white)
+                .fill(.white)
+                .frame(width: pinSize, height: pinSize)
+                .shadow(color: store.markerTint.opacity(0.4),
+                        radius: isSelected ? 8 : 3,
+                        x: 0, y: 2)
+                .overlay(
+                    Circle()
+                        .strokeBorder(store.markerTint,
+                                      lineWidth: isSelected ? 3 : 2)
+                )
+
+            // Logo image if asset exists, otherwise SF Symbol fallback
+            let asset = storeLogoAsset(for: store.chain) ?? store.logoAsset
+            if UIImage(named: asset) != nil {
+                Image(asset)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: pinSize * 0.65, height: pinSize * 0.65)
+                    .clipShape(Circle())
+            } else {
+                Image(systemName: store.icon)
+                    .font(.system(size: isSelected ? 20 : 15, weight: .semibold))
+                    .foregroundStyle(store.markerTint)
+            }
         }
         .animation(.spring(duration: 0.2), value: isSelected)
     }

@@ -1,37 +1,37 @@
+import UIKit
 import SwiftUI
 
-// MARK: - Classifier tab definition
-struct ClassifierTab: Identifiable, Equatable {
-    let id: String       // actual DB value or "All"
-    let label: String    // display name
-    let icon: String     // SF Symbol
+// MARK: - Store tab definition
 
-    static let all: [ClassifierTab] = [
-        ClassifierTab(id: "All",         label: "All",        icon: "square.grid.2x2"),
-        ClassifierTab(id: "PRODUCE",     label: "Produce",    icon: "leaf"),
-        ClassifierTab(id: "PROTEIN",     label: "Protein",    icon: "fork.knife"),
-        ClassifierTab(id: "DAIRY",       label: "Dairy",      icon: "drop"),
-        ClassifierTab(id: "GRAIN",       label: "Grain",      icon: "bag"),
-        ClassifierTab(id: "SPICE",       label: "Spices",     icon: "sparkles"),
-        ClassifierTab(id: "CONDIMENT",   label: "Condiments", icon: "mug"),
-        ClassifierTab(id: "OIL_FAT",     label: "Oils",       icon: "flame"),
-        ClassifierTab(id: "BAKING",      label: "Baking",     icon: "birthday.cake"),
-        ClassifierTab(id: "CANNED_GOOD", label: "Canned",     icon: "cylinder"),
-        ClassifierTab(id: "NUT_SEED",    label: "Nuts",       icon: "circle.hexagongrid"),
-        ClassifierTab(id: "FRESH_HERB",  label: "Herbs",      icon: "leaf.circle"),
-        ClassifierTab(id: "SWEETENER",   label: "Sweeteners", icon: "star"),
-        ClassifierTab(id: "ALCOHOL",     label: "Alcohol",    icon: "wineglass"),
-        ClassifierTab(id: "OTHER_INGR",  label: "Other",      icon: "tray"),
+struct StoreTab: Identifiable, Equatable {
+    let id: String       // store name or "All"
+    let label: String
+    let icon: String
+
+    static let all: [StoreTab] = [
+        StoreTab(id: "All",                    label: "All",        icon: "square.grid.2x2"),
+        StoreTab(id: "Walmart",                label: "Walmart",    icon: "cart.fill"),
+        StoreTab(id: "Ralphs",                 label: "Ralphs",     icon: "storefront.fill"),
+        StoreTab(id: "Stater Bros.",           label: "Stater Bros",icon: "basket.fill"),
+        StoreTab(id: "Food4Less",              label: "Food4Less",  icon: "tag.fill"),
+        StoreTab(id: "Sprouts Farmers Market", label: "Sprouts",    icon: "leaf.fill"),
+        StoreTab(id: "ALDI",                   label: "ALDI",       icon: "dollarsign.circle.fill"),
+        StoreTab(id: "Costco",                 label: "Costco",     icon: "shippingbox.fill"),
+        StoreTab(id: "99 Ranch Market",        label: "99 Ranch",   icon: "globe.asia.australia.fill"),
+        StoreTab(id: "Smart & Final",          label: "Smart & Final", icon: "bag.fill"),
+        StoreTab(id: "Target",                 label: "Target",     icon: "scope"),
     ]
 }
+
+// MARK: - SearchView
 
 struct SearchView: View {
     @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var cartStore: CartStore
 
     @State private var query = ""
-    @State private var selectedTab: ClassifierTab = ClassifierTab.all[0]
-    @State private var results: [KrogerItem] = []
+    @State private var selectedTab: StoreTab = StoreTab.all[0]
+    @State private var results: [ScrapedIngredient] = []
     @State private var isLoading = false
     @State private var errorText: String? = nil
 
@@ -76,13 +76,12 @@ struct SearchView: View {
                 .padding(.vertical, 12)
                 .background(Color(.systemGray6))
                 .clipShape(RoundedRectangle(cornerRadius: 18))
-                .padding(.bottom, 4)
 
-                // Classifier tabs — scrollable row
+                // Store tabs — scrollable row
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
-                        ForEach(ClassifierTab.all) { tab in
-                            ClassifierChip(tab: tab, isSelected: selectedTab == tab) {
+                        ForEach(StoreTab.all) { tab in
+                            StoreChip(tab: tab, isSelected: selectedTab == tab) {
                                 selectedTab = tab
                                 searchItems(reset: true)
                             }
@@ -123,14 +122,15 @@ struct SearchView: View {
                             ProductCard(
                                 imageURL: item.imageURL,
                                 title: item.name,
-                                unit: item.size,
-                                priceText: item.displayPrice(),
+                                unit: item.quantity,
+                                priceText: item.displayPrice,       // var not func
+                                storeName: selectedTab.id == "All" ? item.store : nil,
                                 onAdd: {
                                     cartStore.add(
-                                        id: String(item.productId),
+                                        id: item.id,
                                         name: item.name,
-                                        unit: item.size ?? "",
-                                        price: item.minPrice ?? 0
+                                        unit: item.quantity ?? "",
+                                        price: item.price ?? 0
                                     )
                                 }
                             )
@@ -160,9 +160,8 @@ struct SearchView: View {
         }
     }
 
-    // MARK: - Fetch
-    // Filtering is done server-side by passing classifier to Supabase —
-    // no client-side filter needed at all.
+    // MARK: - Fetch from scraped_ingredients
+
     private func searchItems(reset: Bool = true) {
         if isLoadingMore { return }
 
@@ -180,9 +179,9 @@ struct SearchView: View {
         Task {
             do {
                 let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-                let newItems = try await auth.fetchKrogerItems(
-                    search: trimmed.isEmpty ? nil : trimmed,
-                    classifier: selectedTab.id == "All" ? nil : selectedTab.id,
+                let newItems = try await auth.searchScrapedIngredients(
+                    query: trimmed,
+                    store: selectedTab.id == "All" ? nil : selectedTab.id,
                     limit: pageSize,
                     offset: offset
                 )
@@ -205,10 +204,10 @@ struct SearchView: View {
     }
 }
 
-// MARK: - Classifier chip
+// MARK: - Store chip
 
-struct ClassifierChip: View {
-    let tab: ClassifierTab
+struct StoreChip: View {
+    let tab: StoreTab
     let isSelected: Bool
     let action: () -> Void
 
@@ -241,6 +240,7 @@ struct ProductCard: View {
     let title: String
     let unit: String?
     let priceText: String
+    var storeName: String? = nil   // shown in "All" tab so user knows which store
     let onAdd: () -> Void
 
     var body: some View {
@@ -262,10 +262,26 @@ struct ProductCard: View {
             .background(Color(.systemGray6))
             .clipShape(RoundedRectangle(cornerRadius: 16))
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.headline)
                     .lineLimit(2)
+
+                if let storeName {
+                    HStack(spacing: 4) {
+                        if let asset = storeLogoAsset(for: storeName),
+                           UIImage(named: asset) != nil {
+                            Image(asset)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(height: 50)
+                        } else {
+                            Text(storeName)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.blue)
+                        }
+                    }
+                }
 
                 if let unit, !unit.isEmpty {
                     Text(unit)
@@ -295,14 +311,7 @@ struct ProductCard: View {
             .buttonStyle(.plain)
         }
         .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color(.systemGray6).opacity(0.65))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.black.opacity(0.04), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 3)
+        .background(Color(.systemGray6).opacity(0.65))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 }

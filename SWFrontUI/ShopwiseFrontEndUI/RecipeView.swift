@@ -1,32 +1,52 @@
 import SwiftUI
-
+ 
+// MARK: - Store filter
+ 
+enum StoreFilter: String, CaseIterable {
+    case cheapest   = "Cheapest"
+    case walmart    = "Walmart"
+    case staterBros = "Stater Bros."
+ 
+    /// Returns nil when no store filter should be applied (cheapest across all stores).
+    var storeName: String? {
+        switch self {
+        case .cheapest:   return nil
+        case .walmart:    return "Walmart"
+        case .staterBros: return "Stater Bros."
+        }
+    }
+}
+ 
 struct RecipeView: View {
     @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var cartStore: CartStore
-
+ 
     @State private var query = ""
     @State private var recipes: [RecipeRow] = []
     @State private var expandedID: Int? = nil
     @State private var isLoading = false
     @State private var errorText: String? = nil
     @State private var searchTask: Task<Void, Never>? = nil
-
+ 
     @State private var pageSize = 20
     @State private var offset = 0
     @State private var hasMore = true
     @State private var isLoadingMore = false
     @State private var excludedIngredientsByRecipe: [Int: Set<String>] = [:]
     @State private var expandedInstructionIds: Set<Int> = []
-
-    // Kroger matches keyed by recipe_id
-    @State private var matchesByRecipe: [Int: [RecipeMatch]] = [:]
+ 
+    // Store filter – persists across recipe expansions
+    @State private var storeFilter: StoreFilter = .cheapest
+ 
+    // Scraped matches keyed by recipe_id
+    @State private var matchesByRecipe: [Int: [ScrapedRecipeMatch]] = [:]
     @State private var loadingMatchesFor: Set<Int> = []
-
+ 
     private var filtered: [RecipeRow] {
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return recipes }
         return recipes.filter { $0.title.localizedCaseInsensitiveContains(query) }
     }
-
+ 
     var body: some View {
         List { content }
             .listStyle(.plain)
@@ -44,7 +64,7 @@ struct RecipeView: View {
                 }
             }
     }
-
+ 
     @ViewBuilder
     private var content: some View {
         if isLoading {
@@ -58,7 +78,7 @@ struct RecipeView: View {
             }
         }
     }
-
+ 
     private func recipeSection(index: Int, recipe: RecipeRow) -> some View {
         Section {
             Button {
@@ -79,13 +99,13 @@ struct RecipeView: View {
                     Task { await loadRecipes(reset: false) }
                 }
             }
-
+ 
             if expandedID == recipe.id {
                 recipeExpanded(recipe)
             }
         }
     }
-
+ 
     private func recipeCard(_ recipe: RecipeRow) -> some View {
         CardContainer {
             HStack(spacing: 14) {
@@ -106,53 +126,82 @@ struct RecipeView: View {
                         .frame(width: 67, height: 67)
                         .overlay(Image(systemName: "fork.knife").foregroundStyle(.secondary))
                 }
+ 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(recipe.title).font(.headline).lineLimit(2)
                 }
-
+ 
                 Spacer()
-
+ 
                 Image(systemName: expandedID == recipe.id ? "chevron.up" : "chevron.down")
                     .foregroundStyle(.secondary)
             }
         }
     }
-
+ 
     private func recipeExpanded(_ recipe: RecipeRow) -> some View {
         CardContainer {
             VStack(alignment: .leading, spacing: 12) {
-
-                Text("Ingredients").font(.headline)
-
-                let matches = matchesByRecipe[recipe.id] ?? []
+ 
+                HStack {
+                    Text("Ingredients").font(.headline)
+                    Spacer()
+                }
+ 
+                // Store picker – only shown once matches are loaded
+                let allMatches = matchesByRecipe[recipe.id] ?? []
+                if !allMatches.isEmpty {
+                    Picker("Store", selection: $storeFilter) {
+                        ForEach(StoreFilter.allCases, id: \.self) { filter in
+                            Text(filter.rawValue).tag(filter)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+ 
                 let isLoadingMatches = loadingMatchesFor.contains(recipe.id)
-
+                // Build grouped dict and ordered list in ONE call so canonical keys
+                // are guaranteed identical between the dict and the iteration order.
+                let (allGrouped, ingredients) = processMatches(allMatches)
+ 
                 if isLoadingMatches {
                     HStack {
                         Spacer()
                         VStack(spacing: 6) {
                             ProgressView()
-                            Text("Finding Kroger products…")
+                            Text("Finding products…")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
                     }
                     .padding(.vertical, 8)
-
-                } else if matches.isEmpty {
+ 
+                } else if allMatches.isEmpty {
                     ForEach(recipe.ingredientList, id: \.self) { item in
                         ingredientRow(recipeId: recipe.id, item: item)
                     }
-
+ 
                 } else {
-                    let grouped = groupedMatches(matches)
-                    let ingredients = orderedIngredients(from: matches)
-
-                    ForEach(ingredients, id: \.self) { item in
+                    // Use allGrouped.keys as the canonical ingredient list — this guarantees
+                    // the keys used for lookup ALWAYS match what groupedMatches stored them as.
+                    // Sort by first-seen order using the orderedIngredients index.
+                    let orderedKeys = ingredients.filter { allGrouped[$0] != nil }
+                    ForEach(orderedKeys, id: \.self) { item in
+                        // For store filters: show only that store's matches for this ingredient.
+                        // If the store has nothing for this ingredient, fall back to the full
+                        // cheapest pool so the row is ALWAYS visible regardless of store choice.
+                        let allForItem = allGrouped[item] ?? []
+                        let displayMatches: [ScrapedRecipeMatch] = {
+                            guard let storeName = storeFilter.storeName else { return allForItem }
+                            let storeOnly = allForItem.filter {
+                                $0.matched_store?.localizedCaseInsensitiveContains(storeName) == true
+                            }
+                            return storeOnly.isEmpty ? allForItem : storeOnly
+                        }()
                         IngredientMatchRow(
                             ingredient: item,
-                            matches: grouped[item] ?? [],
+                            matches: displayMatches,
                             isExcluded: excludedIngredientsByRecipe[recipe.id]?.contains(item) == true,
                             onToggle: { toggleIngredient(recipeId: recipe.id, item: item) },
                             onAdd: { match in
@@ -167,11 +216,11 @@ struct RecipeView: View {
                         )
                     }
                 }
-
+ 
                 if let instructions = recipe.instructions,
                    !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Divider().padding(.vertical, 2)
-
+ 
                     Button {
                         withAnimation(.snappy) {
                             toggleInstructions(recipe.id)
@@ -186,7 +235,7 @@ struct RecipeView: View {
                         }
                     }
                     .buttonStyle(.plain)
-
+ 
                     if expandedInstructionIds.contains(recipe.id) {
                         if !recipe.instructionSteps.isEmpty {
                             ForEach(Array(recipe.instructionSteps.enumerated()), id: \.offset) { index, step in
@@ -199,17 +248,24 @@ struct RecipeView: View {
                         }
                     }
                 }
-
+ 
                 Button {
-                    let excluded = excludedIngredientsByRecipe[recipe.id] ?? []
-                    let matches = matchesByRecipe[recipe.id] ?? []
-                    let grouped = groupedMatches(matches)
-                    let ingredients = matches.isEmpty
-                        ? recipe.ingredientList
-                        : orderedIngredients(from: matches)
-
+                    let excluded   = excludedIngredientsByRecipe[recipe.id] ?? []
+                    let allM       = matchesByRecipe[recipe.id] ?? []
+                    // Use processMatches so grouped keys and ordered list are always in sync.
+                    let (allGrouped, processedIngredients) = processMatches(allM)
+                    let ingredients = allM.isEmpty ? recipe.ingredientList : processedIngredients
+ 
                     for item in ingredients where !excluded.contains(item) {
-                        if let top = grouped[item]?.first {
+                        let allForItem = allGrouped[item] ?? []
+                        let top: ScrapedRecipeMatch? = {
+                            guard let storeName = storeFilter.storeName else { return allForItem.first }
+                            let storeOnly = allForItem.filter {
+                                $0.matched_store?.localizedCaseInsensitiveContains(storeName) == true
+                            }
+                            return (storeOnly.isEmpty ? allForItem : storeOnly).first
+                        }()
+                        if let top {
                             cartStore.add(
                                 recipeId: String(recipe.id),
                                 recipeTitle: recipe.title,
@@ -244,35 +300,73 @@ struct RecipeView: View {
             }
         }
     }
-
+ 
     // MARK: - Helpers
-
-    private func groupedMatches(_ matches: [RecipeMatch]) -> [String: [RecipeMatch]] {
-        var dict: [String: [RecipeMatch]] = [:]
-        for match in matches {
-            dict[match.raw_ingredient, default: []].append(match)
+ 
+    /// Normalizes an ingredient string for duplicate detection.
+    /// Strips leading quantities/units and trailing qualifiers so that
+    /// "Freshly ground black pepper" and "freshly ground pepper" collapse
+    /// to the same key, as do "2 tsp. kosher salt" and "kosher salt, divided".
+    private func normalizedKey(_ raw: String) -> String {
+        var s = raw.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        // Strip leading quantity + optional unit (e.g. "2 tbsp. ", "3/4 tsp ", "1/2 cup ")
+        let quantityUnit = #"^[\d\u{00BC}\u{00BD}\u{00BE}\u{2153}\u{2154}\u{215B}-\u{215E}\/\.\s]+(tsp\.?|tbsp\.?|cups?|oz\.?|lbs?\.?|g|ml|l|pinch|dash|cloves?|slices?|pieces?)?\s*"#
+        if let range = s.range(of: quantityUnit, options: .regularExpression) {
+            s.removeSubrange(range)
         }
-        return dict
+        // Strip trailing qualifiers like ", divided" / ", room temperature" / ", optional"
+        if let commaRange = s.range(of: ",") {
+            s = String(s[s.startIndex..<commaRange.lowerBound])
+        }
+        return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+ 
+    /// Processes raw matches into a grouped dict and an ordered ingredient list.
+    /// Both share IDENTICAL canonical key resolution so lookups always align.
+    /// - The dict key is the first raw_ingredient string seen for each normalized key.
+    /// - Within each group, duplicate (store, price) pairs are removed (cheapest kept).
+    private func processMatches(_ matches: [ScrapedRecipeMatch])
+        -> (grouped: [String: [ScrapedRecipeMatch]], ordered: [String]) {
+        var canonicalFor: [String: String] = [:]   // normalizedKey -> first raw string seen
+        var dict: [String: [ScrapedRecipeMatch]] = [:]
+        var order: [String] = []                   // insertion-order canonical keys
 
-    private func orderedIngredients(from matches: [RecipeMatch]) -> [String] {
-        var seen = Set<String>()
-        var result: [String] = []
         for match in matches {
-            if seen.insert(match.raw_ingredient).inserted {
-                result.append(match.raw_ingredient)
+            let key = normalizedKey(match.raw_ingredient)
+            if canonicalFor[key] == nil {
+                canonicalFor[key] = match.raw_ingredient
+                order.append(match.raw_ingredient)  // record order on first encounter
+            }
+            let canonical = canonicalFor[key]!
+            dict[canonical, default: []].append(match)
+        }
+
+        // Deduplicate within each group: keep one match per (store, price) pair.
+        let deduped = dict.mapValues { group -> [ScrapedRecipeMatch] in
+            var seen = Set<String>()
+            return group.filter { m in
+                let k = "\(m.matched_store ?? "")|(\(m.min_price ?? -1))"
+                return seen.insert(k).inserted
             }
         }
-        return result
+        return (deduped, order)
     }
-
+ 
+    // Convenience wrappers so existing call sites keep working.
+    private func groupedMatches(_ matches: [ScrapedRecipeMatch]) -> [String: [ScrapedRecipeMatch]] {
+        processMatches(matches).grouped
+    }
+    private func orderedIngredients(from matches: [ScrapedRecipeMatch]) -> [String] {
+        processMatches(matches).ordered
+    }
+ 
     private func loadMatchesIfNeeded(for recipeId: Int) {
         guard matchesByRecipe[recipeId] == nil,
               !loadingMatchesFor.contains(recipeId) else { return }
         loadingMatchesFor.insert(recipeId)
         Task {
             do {
-                let fetched = try await auth.fetchRecipeMatches(recipeId: recipeId)
+                let fetched = try await auth.fetchScrapedRecipeMatches(recipeId: recipeId)
                 await MainActor.run {
                     matchesByRecipe[recipeId] = fetched
                     loadingMatchesFor.remove(recipeId)
@@ -285,13 +379,13 @@ struct RecipeView: View {
             }
         }
     }
-
+ 
     private func toggleIngredient(recipeId: Int, item: String) {
         var set = excludedIngredientsByRecipe[recipeId] ?? []
         if set.contains(item) { set.remove(item) } else { set.insert(item) }
         excludedIngredientsByRecipe[recipeId] = set
     }
-
+ 
     private func toggleInstructions(_ recipeId: Int) {
         if expandedInstructionIds.contains(recipeId) {
             expandedInstructionIds.remove(recipeId)
@@ -299,7 +393,7 @@ struct RecipeView: View {
             expandedInstructionIds.insert(recipeId)
         }
     }
-
+ 
     private func ingredientRow(recipeId: Int, item: String) -> some View {
         let isExcluded = excludedIngredientsByRecipe[recipeId]?.contains(item) == true
         return Button { toggleIngredient(recipeId: recipeId, item: item) } label: {
@@ -313,12 +407,12 @@ struct RecipeView: View {
         }
         .buttonStyle(.plain)
     }
-
+ 
     @MainActor
     private func loadRecipes(reset: Bool = true) async {
         if isLoadingMore { return }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-
+ 
         if reset {
             offset = 0; recipes = []; hasMore = true; isLoading = true
         } else {
@@ -326,7 +420,7 @@ struct RecipeView: View {
             isLoadingMore = true
         }
         errorText = nil
-
+ 
         do {
             let fetched = try await auth.fetchRecipes(
                 search: trimmed.isEmpty ? nil : trimmed,
@@ -342,21 +436,21 @@ struct RecipeView: View {
         isLoadingMore = false
     }
 }
-
+ 
 // MARK: - Ingredient row with Kroger match
-
+ 
 struct IngredientMatchRow: View {
     let ingredient: String
-    let matches: [RecipeMatch]
+    let matches: [ScrapedRecipeMatch]
     let isExcluded: Bool
     let onToggle: () -> Void
-    let onAdd: (RecipeMatch) -> Void
-
+    let onAdd: (ScrapedRecipeMatch) -> Void
+ 
     @State private var selectedRank = 0
-
+ 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-
+ 
             Button(action: onToggle) {
                 HStack(spacing: 10) {
                     Image(systemName: isExcluded ? "minus.circle" : "checkmark.circle.fill")
@@ -369,7 +463,7 @@ struct IngredientMatchRow: View {
                 }
             }
             .buttonStyle(.plain)
-
+ 
             if !matches.isEmpty && !isExcluded {
                 if matches.count > 1 {
                     Picker("", selection: $selectedRank) {
@@ -379,7 +473,7 @@ struct IngredientMatchRow: View {
                     }
                     .pickerStyle(.segmented)
                 }
-
+ 
                 if selectedRank < matches.count {
                     let match = matches[selectedRank]
                     HStack(spacing: 10) {
@@ -396,18 +490,24 @@ struct IngredientMatchRow: View {
                         }
                         .background(Color(.systemGray6))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
-
+ 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(match.matched_name ?? "")
                                 .font(.caption.weight(.medium))
                                 .lineLimit(2)
+                            if let store = match.matched_store, !store.isEmpty {
+                                Text(store)
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.blue)
+                                    .lineLimit(1)
+                            }
                             if let size = match.matched_size, !size.isEmpty {
                                 Text(size).font(.caption2).foregroundStyle(.secondary)
                             }
                         }
-
+ 
                         Spacer()
-
+ 
                         VStack(alignment: .trailing, spacing: 4) {
                             Text(match.displayPrice)
                                 .font(.caption.weight(.semibold))
@@ -431,5 +531,8 @@ struct IngredientMatchRow: View {
             }
         }
         .padding(.vertical, 2)
+        // Reset the picker whenever the matches array changes (e.g. store filter switched).
+        // Without this, selectedRank can point past the end of the new array and nothing renders.
+        .onChange(of: matches.map { $0.id }) { _, _ in selectedRank = 0 }
     }
 }
