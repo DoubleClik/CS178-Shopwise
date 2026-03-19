@@ -34,6 +34,7 @@ struct SearchView: View {
     @State private var results: [ScrapedIngredient] = []
     @State private var isLoading = false
     @State private var errorText: String? = nil
+    @State private var expandedItemId: String? = nil
 
     @State private var pageSize = 50
     @State private var offset = 0
@@ -125,6 +126,16 @@ struct SearchView: View {
                                 unit: item.quantity,
                                 priceText: item.displayPrice,       // var not func
                                 storeName: selectedTab.id == "All" ? item.store : nil,
+                                isExpanded: expandedItemId == item.id,
+                                onToggle: {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        if expandedItemId == item.id {
+                                            expandedItemId = nil
+                                        } else {
+                                            expandedItemId = item.id
+                                        }
+                                    }
+                                },
                                 onAdd: {
                                     cartStore.add(
                                         id: item.id,
@@ -241,6 +252,8 @@ struct ProductCard: View {
     let unit: String?
     let priceText: String
     var storeName: String? = nil   // shown in "All" tab so user knows which store
+    let isExpanded: Bool
+    let onToggle: () -> Void
     let onAdd: () -> Void
 
     var body: some View {
@@ -265,7 +278,7 @@ struct ProductCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.headline)
-                    .lineLimit(2)
+                    .lineLimit(isExpanded ? nil : 2)
 
                 if let storeName {
                     HStack(spacing: 4) {
@@ -310,6 +323,8 @@ struct ProductCard: View {
             }
             .buttonStyle(.plain)
         }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onToggle)
         .padding(14)
         .background(Color(.systemGray6).opacity(0.65))
         .clipShape(RoundedRectangle(cornerRadius: 18))
