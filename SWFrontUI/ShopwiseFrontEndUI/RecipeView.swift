@@ -159,15 +159,9 @@ struct RecipeView: View {
                 }
  
                 let isLoadingMatches = loadingMatchesFor.contains(recipe.id)
-                // Apply store filter: for .cheapest keep all matches (already sorted cheapest first);
-                // for a specific store keep only that store's matches, falling back to cheapest
-                // across all stores if a given ingredient has no match at that store.
-                let matches: [ScrapedRecipeMatch] = {
-                    guard let storeName = storeFilter.storeName else { return allMatches }
-                    return allMatches.filter {
-                        $0.matched_store?.localizedCaseInsensitiveContains(storeName) == true
-                    }
-                }()
+                // Build grouped dict and ordered list in ONE call so canonical keys
+                // are guaranteed identical between the dict and the iteration order.
+                let (allGrouped, ingredients) = processMatches(allMatches)
  
                 if isLoadingMatches {
                     HStack {
@@ -188,22 +182,25 @@ struct RecipeView: View {
                     }
  
                 } else {
-                    let grouped = groupedMatches(matches)
-                    // Use all matches to keep the full ingredient list even if a store
-                    // doesn't carry every item; missing ones will fall back to cheapest.
-                    let ingredients = orderedIngredients(from: allMatches)
- 
-                    ForEach(ingredients, id: \.self) { item in
-                        // Per-ingredient fallback: if the chosen store has no match for
-                        // this ingredient, silently fall back to the cheapest available.
-                        let storeMatches = grouped[item] ?? []
-                        let fallbackMatches: [ScrapedRecipeMatch] = {
-                            if !storeMatches.isEmpty { return storeMatches }
-                            return groupedMatches(allMatches)[item] ?? []
+                    // Use allGrouped.keys as the canonical ingredient list — this guarantees
+                    // the keys used for lookup ALWAYS match what groupedMatches stored them as.
+                    // Sort by first-seen order using the orderedIngredients index.
+                    let orderedKeys = ingredients.filter { allGrouped[$0] != nil }
+                    ForEach(orderedKeys, id: \.self) { item in
+                        // For store filters: show only that store's matches for this ingredient.
+                        // If the store has nothing for this ingredient, fall back to the full
+                        // cheapest pool so the row is ALWAYS visible regardless of store choice.
+                        let allForItem = allGrouped[item] ?? []
+                        let displayMatches: [ScrapedRecipeMatch] = {
+                            guard let storeName = storeFilter.storeName else { return allForItem }
+                            let storeOnly = allForItem.filter {
+                                $0.matched_store?.localizedCaseInsensitiveContains(storeName) == true
+                            }
+                            return storeOnly.isEmpty ? allForItem : storeOnly
                         }()
                         IngredientMatchRow(
                             ingredient: item,
-                            matches: fallbackMatches,
+                            matches: displayMatches,
                             isExcluded: excludedIngredientsByRecipe[recipe.id]?.contains(item) == true,
                             onToggle: { toggleIngredient(recipeId: recipe.id, item: item) },
                             onAdd: { match in
@@ -254,26 +251,20 @@ struct RecipeView: View {
                 Button {
                     let excluded   = excludedIngredientsByRecipe[recipe.id] ?? []
                     let allM       = matchesByRecipe[recipe.id] ?? []
-                    let allGrouped = groupedMatches(allM)
-                    // Apply store filter, with per-ingredient fallback to cheapest
-                    let filteredGrouped: [String: [ScrapedRecipeMatch]] = {
-                        guard let storeName = storeFilter.storeName else { return allGrouped }
-                        let storeOnly = allM.filter {
-                            $0.matched_store?.localizedCaseInsensitiveContains(storeName) == true
-                        }
-                        var d = groupedMatches(storeOnly)
-                        // Fill in any missing ingredients from the cheapest pool
-                        for (ingredient, cheapestMatches) in allGrouped where d[ingredient] == nil {
-                            d[ingredient] = cheapestMatches
-                        }
-                        return d
-                    }()
-                    let ingredients = allM.isEmpty
-                        ? recipe.ingredientList
-                        : orderedIngredients(from: allM)
+                    // Use processMatches so grouped keys and ordered list are always in sync.
+                    let (allGrouped, processedIngredients) = processMatches(allM)
+                    let ingredients = allM.isEmpty ? recipe.ingredientList : processedIngredients
  
                     for item in ingredients where !excluded.contains(item) {
-                        if let top = filteredGrouped[item]?.first {
+                        let allForItem = allGrouped[item] ?? []
+                        let top: ScrapedRecipeMatch? = {
+                            guard let storeName = storeFilter.storeName else { return allForItem.first }
+                            let storeOnly = allForItem.filter {
+                                $0.matched_store?.localizedCaseInsensitiveContains(storeName) == true
+                            }
+                            return (storeOnly.isEmpty ? allForItem : storeOnly).first
+                        }()
+                        if let top {
                             cartStore.add(
                                 recipeId: String(recipe.id),
                                 recipeTitle: recipe.title,
@@ -307,23 +298,61 @@ struct RecipeView: View {
  
     // MARK: - Helpers
  
-    private func groupedMatches(_ matches: [ScrapedRecipeMatch]) -> [String: [ScrapedRecipeMatch]] {
-        var dict: [String: [ScrapedRecipeMatch]] = [:]
-        for match in matches {
-            dict[match.raw_ingredient, default: []].append(match)
+    /// Normalizes an ingredient string for duplicate detection.
+    /// Strips leading quantities/units and trailing qualifiers so that
+    /// "Freshly ground black pepper" and "freshly ground pepper" collapse
+    /// to the same key, as do "2 tsp. kosher salt" and "kosher salt, divided".
+    private func normalizedKey(_ raw: String) -> String {
+        var s = raw.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        // Strip leading quantity + optional unit (e.g. "2 tbsp. ", "3/4 tsp ", "1/2 cup ")
+        let quantityUnit = #"^[\d\u{00BC}\u{00BD}\u{00BE}\u{2153}\u{2154}\u{215B}-\u{215E}\/\.\s]+(tsp\.?|tbsp\.?|cups?|oz\.?|lbs?\.?|g|ml|l|pinch|dash|cloves?|slices?|pieces?)?\s*"#
+        if let range = s.range(of: quantityUnit, options: .regularExpression) {
+            s.removeSubrange(range)
         }
-        return dict
+        // Strip trailing qualifiers like ", divided" / ", room temperature" / ", optional"
+        if let commaRange = s.range(of: ",") {
+            s = String(s[s.startIndex..<commaRange.lowerBound])
+        }
+        return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
  
-    private func orderedIngredients(from matches: [ScrapedRecipeMatch]) -> [String] {
-        var seen = Set<String>()
-        var result: [String] = []
+    /// Processes raw matches into a grouped dict and an ordered ingredient list.
+    /// Both share IDENTICAL canonical key resolution so lookups always align.
+    /// - The dict key is the first raw_ingredient string seen for each normalized key.
+    /// - Within each group, duplicate (store, price) pairs are removed (cheapest kept).
+    private func processMatches(_ matches: [ScrapedRecipeMatch])
+        -> (grouped: [String: [ScrapedRecipeMatch]], ordered: [String]) {
+        var canonicalFor: [String: String] = [:]   // normalizedKey -> first raw string seen
+        var dict: [String: [ScrapedRecipeMatch]] = [:]
+        var order: [String] = []                   // insertion-order canonical keys
+
         for match in matches {
-            if seen.insert(match.raw_ingredient).inserted {
-                result.append(match.raw_ingredient)
+            let key = normalizedKey(match.raw_ingredient)
+            if canonicalFor[key] == nil {
+                canonicalFor[key] = match.raw_ingredient
+                order.append(match.raw_ingredient)  // record order on first encounter
+            }
+            let canonical = canonicalFor[key]!
+            dict[canonical, default: []].append(match)
+        }
+
+        // Deduplicate within each group: keep one match per (store, price) pair.
+        let deduped = dict.mapValues { group -> [ScrapedRecipeMatch] in
+            var seen = Set<String>()
+            return group.filter { m in
+                let k = "\(m.matched_store ?? "")|(\(m.min_price ?? -1))"
+                return seen.insert(k).inserted
             }
         }
-        return result
+        return (deduped, order)
+    }
+ 
+    // Convenience wrappers so existing call sites keep working.
+    private func groupedMatches(_ matches: [ScrapedRecipeMatch]) -> [String: [ScrapedRecipeMatch]] {
+        processMatches(matches).grouped
+    }
+    private func orderedIngredients(from matches: [ScrapedRecipeMatch]) -> [String] {
+        processMatches(matches).ordered
     }
  
     private func loadMatchesIfNeeded(for recipeId: Int) {
@@ -497,5 +526,8 @@ struct IngredientMatchRow: View {
             }
         }
         .padding(.vertical, 2)
+        // Reset the picker whenever the matches array changes (e.g. store filter switched).
+        // Without this, selectedRank can point past the end of the new array and nothing renders.
+        .onChange(of: matches.map { $0.id }) { _, _ in selectedRank = 0 }
     }
 }
