@@ -1,35 +1,54 @@
+import UIKit
 import SwiftUI
+
+// MARK: - Store tab definition
+
+struct StoreTab: Identifiable, Equatable {
+    let id: String       // store name or "All"
+    let label: String
+    let icon: String
+
+    static let all: [StoreTab] = [
+        StoreTab(id: "All",                    label: "All",        icon: "square.grid.2x2"),
+        StoreTab(id: "Walmart",                label: "Walmart",    icon: "cart.fill"),
+        StoreTab(id: "Ralphs",                 label: "Ralphs",     icon: "storefront.fill"),
+        StoreTab(id: "Stater Bros.",           label: "Stater Bros",icon: "basket.fill"),
+        StoreTab(id: "Food4Less",              label: "Food4Less",  icon: "tag.fill"),
+        StoreTab(id: "Sprouts Farmers Market", label: "Sprouts",    icon: "leaf.fill"),
+        StoreTab(id: "ALDI",                   label: "ALDI",       icon: "dollarsign.circle.fill"),
+        StoreTab(id: "Costco",                 label: "Costco",     icon: "shippingbox.fill"),
+        StoreTab(id: "99 Ranch Market",        label: "99 Ranch",   icon: "globe.asia.australia.fill"),
+        StoreTab(id: "Smart & Final",          label: "Smart & Final", icon: "bag.fill"),
+        StoreTab(id: "Target",                 label: "Target",     icon: "scope"),
+    ]
+}
+
+// MARK: - SearchView
 
 struct SearchView: View {
     @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var cartStore: CartStore
-    
+
     @State private var query = ""
-    @State private var selectedFilter: String = "All"
-    @State private var results: [WalmartItem] = []
+    @State private var selectedTab: StoreTab = StoreTab.all[0]
+    @State private var results: [ScrapedIngredient] = []
     @State private var isLoading = false
     @State private var errorText: String? = nil
-    @State private var expandedItemId: Int? = nil
 
     @State private var pageSize = 50
     @State private var offset = 0
-
     @State private var isLoadingMore = false
     @State private var hasMore = true
-
-    private let filters = ["All", "Ingredients", "Non-Ingredients"]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
 
-                // Title
                 Text("ShopWise")
                     .font(.system(size: 34, weight: .bold))
                     .padding(.top, 6)
-                    .padding(.bottom, 4)
 
-                // Search bar (custom like your right screenshot)
+                // Search bar
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
@@ -56,21 +75,21 @@ struct SearchView: View {
                 .padding(.vertical, 12)
                 .background(Color(.systemGray6))
                 .clipShape(RoundedRectangle(cornerRadius: 18))
-                .padding(.bottom, 4)
 
-                // Category chips row
+                // Store tabs — scrollable row
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
-                        ForEach(filters, id: \.self) { f in
-                            SearchCategoryChip(title: f, isSelected: selectedFilter == f) {
-                                selectedFilter = f
-                                searchItems(reset: true)   // ✅ ADD HERE
+                        ForEach(StoreTab.all) { tab in
+                            StoreChip(tab: tab, isSelected: selectedTab == tab) {
+                                selectedTab = tab
+                                searchItems(reset: true)
                             }
                         }
                     }
                     .padding(.vertical, 2)
+                    .padding(.horizontal, 1)
                 }
-                
+
                 // Content
                 if isLoading {
                     HStack {
@@ -83,40 +102,47 @@ struct SearchView: View {
                     Text(errorText)
                         .foregroundStyle(.red)
                         .padding(.top, 10)
+                } else if results.isEmpty {
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 36))
+                                .foregroundStyle(.tertiary)
+                            Text("No results")
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(.top, 40)
                 } else {
                     LazyVStack(spacing: 14) {
-                        ForEach(Array(filteredResults.enumerated()), id: \.element.id) { index, item in
+                        ForEach(Array(results.enumerated()), id: \.element.id) { index, item in
                             ProductCard(
-                                imageURL: bestImageURL(for: item),
+                                imageURL: item.imageURL,
                                 title: item.name,
-                                unit: unitText(for: item),
-                                priceText: formatPrice(item.retail_price),
-                                descriptionText: nil, // link this to Supabase later
-                                itemCountText: nil,   // link this to Supabase later
-                                isExpanded: expandedItemId == item.id,
-                                onToggle: {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                        if expandedItemId == item.id {
-                                            expandedItemId = nil
-                                        } else {
-                                            expandedItemId = item.id
-                                        }
-                                    }
-                                },
+                                unit: item.quantity,
+                                priceText: item.displayPrice,       // var not func
+                                storeName: selectedTab.id == "All" ? item.store : nil,
                                 onAdd: {
-                                    cartStore.add(id: String(item.id), name: item.name, unit: unitText(for: item) ?? "", price: item.retail_price ?? 0)
+                                    cartStore.add(
+                                        id: item.id,
+                                        name: item.name,
+                                        unit: item.quantity ?? "",
+                                        price: item.price ?? 0
+                                    )
                                 }
                             )
                             .onAppear {
-                                // When the LAST item appears, load more
-                                if index == filteredResults.count - 1 {
+                                if index == results.count - 1 {
                                     searchItems(reset: false)
                                 }
                             }
-                        }                    }
+                        }
+                    }
                     .padding(.top, 4)
                 }
-                
+
                 Spacer(minLength: 20)
             }
             .padding(.horizontal, 16)
@@ -124,7 +150,7 @@ struct SearchView: View {
         }
         .background(Color(.systemBackground))
         .navigationBarTitleDisplayMode(.inline)
-        .appToolbar() // <-- uses your existing Settings/Profile toolbar
+        .appToolbar()
         .onChange(of: query) { _, _ in
             searchItems(reset: true)
         }
@@ -133,44 +159,9 @@ struct SearchView: View {
         }
     }
 
-    // MARK: - Filtering
-    private var filteredResults: [WalmartItem] {
-        switch selectedFilter {
-        case "Ingredients":
-            return results.filter { $0.ingredient == true }
-        case "Non-Ingredients":
-            return results.filter { $0.ingredient == false }
-        default:
-            return results
-        }
-    }
+    // MARK: - Fetch from scraped_ingredients
 
-    // MARK: - Helpers (image/price/unit)
-    private func bestImageURL(for item: WalmartItem) -> URL? {
-        if let s = item.thumbnailImage, let url = URL(string: s), !s.isEmpty { return url }
-        if let s = item.mediumImage, let url = URL(string: s), !s.isEmpty { return url }
-        if let s = item.largeImage, let url = URL(string: s), !s.isEmpty { return url }
-        return nil
-    }
-
-    private func formatPrice(_ p: Double?) -> String {
-        guard let p else { return "Price unavailable" }
-        return String(format: "$%.2f", p)
-    }
-
-    private func unitText(for item: WalmartItem) -> String? {
-        // Your Supabase data doesn't include a unit column.
-        // If classifiers contains something unit-like, show it; otherwise hide.
-        let cls = (item.classifiers ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if cls.isEmpty { return nil }
-        return cls
-    }
-
-    // MARK: - Supabase fetch
     private func searchItems(reset: Bool = true) {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // If we're already loading more, don't double-fire
         if isLoadingMore { return }
 
         if reset {
@@ -178,44 +169,26 @@ struct SearchView: View {
             results = []
             hasMore = true
         } else {
-            // if we already know there are no more rows, stop
             if !hasMore { return }
         }
 
-        if reset {
-            isLoading = true
-        } else {
-            isLoadingMore = true
-        }
+        if reset { isLoading = true } else { isLoadingMore = true }
         errorText = nil
 
         Task {
             do {
-                let ingredientOnly: Bool? = {
-                    switch selectedFilter {
-                    case "Ingredients": return true
-                    case "Non-Ingredients": return false
-                    default: return nil
-                    }
-                }()
-
-                let newItems = try await auth.fetchWalmartItems(
-                    search: trimmed.isEmpty ? nil : trimmed,
-                    ingredientOnly: ingredientOnly,   // ✅ NEW
+                let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                let newItems = try await auth.searchScrapedIngredients(
+                    query: trimmed,
+                    store: selectedTab.id == "All" ? nil : selectedTab.id,
                     limit: pageSize,
                     offset: offset
                 )
 
                 await MainActor.run {
-                    // Append results
                     results.append(contentsOf: newItems)
-
-                    // Move offset forward
                     offset += newItems.count
-
-                    // If we got fewer than pageSize, we reached the end
                     if newItems.count < pageSize { hasMore = false }
-
                     isLoading = false
                     isLoadingMore = false
                 }
@@ -230,162 +203,114 @@ struct SearchView: View {
     }
 }
 
+// MARK: - Store chip
 
-struct SearchCategoryChip: View {
-    let title: String
+struct StoreChip: View {
+    let tab: StoreTab
     let isSelected: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(isSelected ? Color.accentColor.opacity(0.18) : Color(.systemGray6))
-                .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
-                .clipShape(Capsule())
-                .overlay(
-                    Capsule()
-                        .stroke(Color.black.opacity(0.04), lineWidth: 1)
-                )
+            HStack(spacing: 6) {
+                Image(systemName: tab.icon)
+                    .font(.system(size: 12, weight: .medium))
+                Text(tab.label)
+                    .font(.subheadline.weight(.semibold))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(isSelected ? Color.blue.opacity(0.15) : Color(.systemGray6))
+            .foregroundStyle(isSelected ? Color.blue : Color.primary)
+            .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(isSelected ? Color.blue.opacity(0.4) : Color.clear, lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
     }
 }
+
+// MARK: - Product card
 
 struct ProductCard: View {
     let imageURL: URL?
     let title: String
     let unit: String?
     let priceText: String
-    let descriptionText: String?
-    let itemCountText: String?
-    let isExpanded: Bool
-    let onToggle: () -> Void
+    var storeName: String? = nil   // shown in "All" tab so user knows which store
     let onAdd: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 14) {
-                AsyncImage(url: imageURL) { phase in
-                    switch phase {
-                    case .empty:
-                        ProgressView()
-                            .frame(width: 74, height: 74)
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 74, height: 74)
-                            .clipped()
-                    case .failure:
-                        Image(systemName: "photo")
-                            .frame(width: 74, height: 74)
-                            .foregroundStyle(.secondary)
-                    @unknown default:
-                        EmptyView()
-                            .frame(width: 74, height: 74)
-                    }
+        HStack(spacing: 14) {
+            AsyncImage(url: imageURL) { phase in
+                switch phase {
+                case .empty:
+                    ProgressView().frame(width: 74, height: 74)
+                case .success(let image):
+                    image.resizable().scaledToFill()
+                        .frame(width: 74, height: 74).clipped()
+                case .failure:
+                    Image(systemName: "photo")
+                        .frame(width: 74, height: 74).foregroundStyle(.secondary)
+                @unknown default:
+                    EmptyView().frame(width: 74, height: 74)
                 }
-                .background(Color(.systemGray6))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .onTapGesture(perform: onToggle)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(title)
-                        .font(.headline)
-                        .lineLimit(2)
-                        .onTapGesture(perform: onToggle)
-
-                    if let unit, !unit.isEmpty {
-                        Text(unit)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .onTapGesture(perform: onToggle)
-                    }
-
-                    Text(priceText)
-                        .font(.headline)
-                        .onTapGesture(perform: onToggle)
-                }
-
-                Spacer()
-
-                Button(action: onAdd) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "cart.badge.plus")
-                        Text("Add")
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .foregroundStyle(.white)
-                    .background(Color.blue)
-                    .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
             }
+            .background(Color(.systemGray6))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
 
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 10) {
-                    AsyncImage(url: imageURL) { phase in
-                        switch phase {
-                        case .empty:
-                            ProgressView()
-                                .frame(maxWidth: .infinity, minHeight: 160)
-                        case .success(let image):
-                            image
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                    .lineLimit(2)
+
+                if let storeName {
+                    HStack(spacing: 4) {
+                        if let asset = storeLogoAsset(for: storeName),
+                           UIImage(named: asset) != nil {
+                            Image(asset)
                                 .resizable()
-                                .scaledToFill()
-                                .frame(maxWidth: .infinity, minHeight: 160, maxHeight: 200)
-                                .clipped()
-                        case .failure:
-                            Image(systemName: "photo")
-                                .frame(maxWidth: .infinity, minHeight: 160)
-                                .foregroundStyle(.secondary)
-                        @unknown default:
-                            EmptyView()
-                                .frame(maxWidth: .infinity, minHeight: 160)
+                                .scaledToFit()
+                                .frame(height: 50)
+                        } else {
+                            Text(storeName)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.blue)
                         }
                     }
-                    .background(Color(.systemGray6))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .onTapGesture(perform: onToggle)
-
-                    Divider()
-
-                    if let descriptionText, !descriptionText.isEmpty {
-                        Text(descriptionText)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("Description coming soon")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if let itemCountText, !itemCountText.isEmpty {
-                        Text("Item count: \(itemCountText)")
-                            .font(.subheadline.weight(.semibold))
-                    } else {
-                        Text("Item count: —")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
                 }
+
+                if let unit, !unit.isEmpty {
+                    Text(unit)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Text(priceText)
+                    .font(.headline)
             }
+
+            Spacer()
+
+            Button(action: onAdd) {
+                HStack(spacing: 8) {
+                    Image(systemName: "cart.badge.plus")
+                    Text("Add")
+                }
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .foregroundStyle(.white)
+                .background(Color.blue)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
         }
         .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color(.systemGray6).opacity(0.65))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.black.opacity(0.04), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 3)
+        .background(Color(.systemGray6).opacity(0.65))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 }
