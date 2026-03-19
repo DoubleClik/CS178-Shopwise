@@ -70,9 +70,16 @@ struct CartView: View {
 
                                 if expandedRecipeIds.contains(group.id) {
                                     Divider()
-                                    ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
-                                        itemRow(item)
-                                        if index != group.items.count - 1 {
+                                    let storeGroups = groupItemsByStore(group.items)
+                                    ForEach(storeGroups) { storeGroup in
+                                        storeHeader(storeGroup.store)
+                                        ForEach(Array(storeGroup.items.enumerated()), id: \.element.id) { index, item in
+                                            itemRow(item)
+                                            if index != storeGroup.items.count - 1 {
+                                                Divider()
+                                            }
+                                        }
+                                        if storeGroup.id != storeGroups.last?.id {
                                             Divider()
                                         }
                                     }
@@ -99,12 +106,11 @@ struct CartView: View {
                         Text("No individual items")
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(individualItems) { item in
-                            itemRow(item)
-                        }
-                        .onDelete { indexSet in
-                            for idx in indexSet {
-                                cartStore.remove(individualItems[idx])
+                        let storeGroups = groupItemsByStore(individualItems)
+                        ForEach(storeGroups) { storeGroup in
+                            storeHeader(storeGroup.store)
+                            ForEach(storeGroup.items) { item in
+                                itemRow(item)
                             }
                         }
                     }
@@ -177,6 +183,11 @@ struct CartView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.name)
                     .font(.headline)
+                if let store = item.storeName, !store.isEmpty {
+                    Text(store)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.secondary)
+                }
                 if !item.unit.isEmpty {
                     Text(item.unit)
                         .font(.subheadline)
@@ -209,6 +220,41 @@ struct CartView: View {
             }
         }
         .padding(.vertical, 4)
+        .swipeActions {
+            Button(role: .destructive) {
+                cartStore.remove(item)
+            } label: {
+                Label("Remove", systemImage: "trash")
+            }
+        }
+    }
+
+    private struct StoreGroup: Identifiable {
+        let id: String
+        let store: String
+        let items: [CartLineItem]
+    }
+
+    private func groupItemsByStore(_ items: [CartLineItem]) -> [StoreGroup] {
+        let grouped = Dictionary(grouping: items) { item in
+            let store = item.storeName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (store?.isEmpty == false) ? store! : "Unknown Store"
+        }
+        return grouped.map { key, value in
+            StoreGroup(id: key, store: key, items: value)
+        }
+        .sorted { $0.store.localizedCaseInsensitiveCompare($1.store) == .orderedAscending }
+    }
+
+    @ViewBuilder
+    private func storeHeader(_ store: String) -> some View {
+        HStack {
+            Text(store)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.primary)
+            Spacer()
+        }
+        .padding(.top, 4)
     }
 
     private func removeGroup(_ groupId: String) {

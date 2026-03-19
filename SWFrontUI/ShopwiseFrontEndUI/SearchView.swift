@@ -137,11 +137,13 @@ struct SearchView: View {
                                     }
                                 },
                                 onAdd: {
+                                    let fallbackStore = selectedTab.id == "All" ? nil : selectedTab.id
                                     cartStore.add(
                                         id: item.id,
                                         name: item.name,
                                         unit: item.quantity ?? "",
-                                        price: item.price ?? 0
+                                        price: item.price ?? 0,
+                                        storeName: item.store.isEmpty ? fallbackStore : item.store
                                     )
                                 }
                             )

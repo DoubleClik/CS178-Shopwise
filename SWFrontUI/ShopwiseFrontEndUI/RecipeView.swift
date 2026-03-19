@@ -36,6 +36,7 @@ struct RecipeView: View {
     @State private var excludedIngredientsByRecipe: [Int: Set<String>] = [:]
     @State private var expandedInstructionIds: Set<Int> = []
     @State private var expandedIngredientIds: Set<Int> = []
+    @State private var selectedMatchIndex: [String: Int] = [:]
  
     // Shopping mode – persists across recipe expansions
     @State private var shoppingMode: ShoppingMode = .value
@@ -148,7 +149,7 @@ struct RecipeView: View {
             VStack(alignment: .leading, spacing: 12) {
  
                 Button {
-                    withAnimation(.snappy) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
                         toggleIngredients(recipe.id)
                     }
                 } label: {
@@ -261,6 +262,7 @@ struct RecipeView: View {
                         IngredientMatchRow(
                             ingredient: item,
                             matches: displayMatches,
+                            selectedRank: bindingForSelectedRank(recipeId: recipe.id, ingredient: item, matchCount: displayMatches.count),
                             isExcluded: excludedIngredientsByRecipe[recipe.id]?.contains(item) == true,
                             onToggle: { toggleIngredient(recipeId: recipe.id, item: item) },
                             onAdd: { match in
@@ -269,7 +271,8 @@ struct RecipeView: View {
                                     recipeTitle: recipe.title,
                                     name: match.matched_name ?? item,
                                     unit: match.matched_size ?? "",
-                                    price: match.min_price ?? 0
+                                    price: match.min_price ?? 0,
+                                    storeName: match.matched_store
                                 )
                             }
                         )
@@ -325,7 +328,13 @@ struct RecipeView: View {
                             if let plan {
                                 return plan.matchFor[item] ?? allForItem.first
                             }
-                            return allForItem.first // Value: cheapest
+                            // Value mode: honor the user's selected rank if available
+                            let key = matchKey(recipeId: recipe.id, ingredient: item)
+                            let idx = selectedMatchIndex[key] ?? 0
+                            if idx >= 0 && idx < allForItem.count {
+                                return allForItem[idx]
+                            }
+                            return allForItem.first
                         }()
                         if let top {
                             cartStore.add(
@@ -333,7 +342,8 @@ struct RecipeView: View {
                                 recipeTitle: recipe.title,
                                 name: top.matched_name ?? item,
                                 unit: top.matched_size ?? "",
-                                price: top.min_price ?? 0
+                                price: top.min_price ?? 0,
+                                storeName: top.matched_store
                             )
                         } else {
                             cartStore.add(
@@ -358,6 +368,7 @@ struct RecipeView: View {
                     }
                     .frame(maxWidth: .infinity)
                 }
+                .tint(Theme.primary)
                 .buttonStyle(.borderedProminent)
             }
         }
@@ -546,6 +557,24 @@ struct RecipeView: View {
             expandedIngredientIds.insert(recipeId)
         }
     }
+
+    private func matchKey(recipeId: Int, ingredient: String) -> String {
+        "\(recipeId)::\(ingredient)"
+    }
+
+    private func bindingForSelectedRank(recipeId: Int, ingredient: String, matchCount: Int) -> Binding<Int> {
+        let key = matchKey(recipeId: recipeId, ingredient: ingredient)
+        return Binding<Int>(
+            get: {
+                let idx = selectedMatchIndex[key] ?? 0
+                if matchCount == 0 { return 0 }
+                return min(max(idx, 0), matchCount - 1)
+            },
+            set: { newValue in
+                selectedMatchIndex[key] = newValue
+            }
+        )
+    }
  
     private func ingredientRow(recipeId: Int, item: String) -> some View {
         let isExcluded = excludedIngredientsByRecipe[recipeId]?.contains(item) == true
@@ -595,11 +624,10 @@ struct RecipeView: View {
 struct IngredientMatchRow: View {
     let ingredient: String
     let matches: [ScrapedRecipeMatch]
+    @Binding var selectedRank: Int
     let isExcluded: Bool
     let onToggle: () -> Void
     let onAdd: (ScrapedRecipeMatch) -> Void
- 
-    @State private var selectedRank = 0
  
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -686,6 +714,10 @@ struct IngredientMatchRow: View {
         .padding(.vertical, 2)
         // Reset the picker whenever the matches array changes (e.g. store filter switched).
         // Without this, selectedRank can point past the end of the new array and nothing renders.
-        .onChange(of: matches.map { $0.id }) { _, _ in selectedRank = 0 }
+        .onChange(of: matches.map { $0.id }) { _, _ in
+            if selectedRank >= matches.count {
+                selectedRank = 0
+            }
+        }
     }
 }

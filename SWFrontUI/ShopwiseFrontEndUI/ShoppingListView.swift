@@ -46,8 +46,12 @@ struct ShoppingListView: View {
                                 .buttonStyle(.plain)
 
                                 if expandedRecipeIds.contains(group.id) {
-                                    ForEach(group.items) { item in
-                                        itemRow(item)
+                                    let storeGroups = groupItemsByStore(group.items)
+                                    ForEach(storeGroups) { storeGroup in
+                                        storeHeader(storeGroup.store)
+                                        ForEach(storeGroup.items) { item in
+                                            itemRow(item)
+                                        }
                                     }
                                 }
                             }
@@ -61,8 +65,12 @@ struct ShoppingListView: View {
                         Text("No individual items")
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(individualItems) { item in
-                            itemRow(item)
+                        let storeGroups = groupItemsByStore(individualItems)
+                        ForEach(storeGroups) { storeGroup in
+                            storeHeader(storeGroup.store)
+                            ForEach(storeGroup.items) { item in
+                                itemRow(item)
+                            }
                         }
                     }
                 }
@@ -146,6 +154,34 @@ struct ShoppingListView: View {
         }
     }
 
+    private struct StoreGroup: Identifiable {
+        let id: String
+        let store: String
+        let items: [CartLineItem]
+    }
+
+    private func groupItemsByStore(_ items: [CartLineItem]) -> [StoreGroup] {
+        let grouped = Dictionary(grouping: items) { item in
+            let store = item.storeName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (store?.isEmpty == false) ? store! : "Unknown Store"
+        }
+        return grouped.map { key, value in
+            StoreGroup(id: key, store: key, items: value)
+        }
+        .sorted { $0.store.localizedCaseInsensitiveCompare($1.store) == .orderedAscending }
+    }
+
+    @ViewBuilder
+    private func storeHeader(_ store: String) -> some View {
+        HStack {
+            Text(store)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.secondary)
+            Spacer()
+        }
+        .padding(.top, 4)
+    }
+
     private var recipeGroups: [RecipeGroup] {
         let items = cartStore.items
         var groups: [String: RecipeGroup] = [:]
@@ -183,6 +219,11 @@ struct ShoppingListView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.name)
                         .strikethrough(checkedIDs.contains(item.id))
+                    if let store = item.storeName, !store.isEmpty {
+                        Text(store)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.primary)
+                    }
                     if !item.unit.isEmpty {
                         Text("\(item.quantity) × \(item.unit)")
                             .font(.subheadline)
