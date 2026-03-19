@@ -2,19 +2,20 @@ import SwiftUI
  
 // MARK: - Store filter
  
-enum StoreFilter: String, CaseIterable {
-    case cheapest   = "Cheapest"
-    case walmart    = "Walmart"
-    case staterBros = "Stater Bros."
- 
-    /// Returns nil when no store filter should be applied (cheapest across all stores).
-    var storeName: String? {
-        switch self {
-        case .cheapest:   return nil
-        case .walmart:    return "Walmart"
-        case .staterBros: return "Stater Bros."
-        }
-    }
+enum ShoppingMode: String, CaseIterable {
+    case value    = "Value"
+    case timeSave = "Time Save"
+
+    var label: String { rawValue }
+}
+
+/// Result of the Time Save store-selection algorithm.
+/// Maps each canonical ingredient name to the best match from the chosen store set.
+struct TimeSavePlan {
+    /// Ordered list of stores selected (2–4 max), sorted by items covered descending.
+    let stores: [String]
+    /// Per-ingredient: the best match from the selected stores (fallback to cheapest if uncovered).
+    let matchFor: [String: ScrapedRecipeMatch]
 }
  
 struct RecipeView: View {
@@ -35,8 +36,8 @@ struct RecipeView: View {
     @State private var excludedIngredientsByRecipe: [Int: Set<String>] = [:]
     @State private var expandedInstructionIds: Set<Int> = []
  
-    // Store filter – persists across recipe expansions
-    @State private var storeFilter: StoreFilter = .cheapest
+    // Shopping mode – persists across recipe expansions
+    @State private var shoppingMode: ShoppingMode = .value
  
     // Scraped matches keyed by recipe_id
     @State private var matchesByRecipe: [Int: [ScrapedRecipeMatch]] = [:]
@@ -148,22 +149,44 @@ struct RecipeView: View {
                     Spacer()
                 }
  
-                // Store picker – only shown once matches are loaded
+                // Mode picker – only shown once matches are loaded
                 let allMatches = matchesByRecipe[recipe.id] ?? []
                 if !allMatches.isEmpty {
-                    Picker("Store", selection: $storeFilter) {
-                        ForEach(StoreFilter.allCases, id: \.self) { filter in
-                            Text(filter.rawValue).tag(filter)
+                    HStack(spacing: 4) {
+                        ForEach(ShoppingMode.allCases, id: \.self) { mode in
+                            let isSelected = shoppingMode == mode
+                            Button {
+                                shoppingMode = mode
+                            } label: {
+                                HStack(spacing: 5) {
+                                    Image(systemName: mode == .value ? "tag.fill" : "clock.arrow.2.circlepath")
+                                        .font(.system(size: 12, weight: .semibold))
+                                    Text(mode.label)
+                                        .font(.system(size: 14, weight: .semibold))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 9)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(isSelected ? Color.primary : Color.clear)
+                                )
+                                .foregroundStyle(isSelected ? Color(UIColor.systemBackground) : Color.secondary)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
-                    .pickerStyle(.segmented)
+                    .padding(4)
+                    .background(Color(.systemGray5))
+                    .clipShape(RoundedRectangle(cornerRadius: 13))
                 }
- 
+
                 let isLoadingMatches = loadingMatchesFor.contains(recipe.id)
-                // Build grouped dict and ordered list in ONE call so canonical keys
-                // are guaranteed identical between the dict and the iteration order.
                 let (allGrouped, ingredients) = processMatches(allMatches)
- 
+                // For Time Save mode, compute the optimal store plan once here.
+                let timeSavePlan: TimeSavePlan? = shoppingMode == .timeSave
+                    ? computeTimeSavePlan(allGrouped: allGrouped, ingredients: ingredients)
+                    : nil
+
                 if isLoadingMatches {
                     HStack {
                         Spacer()
@@ -176,28 +199,51 @@ struct RecipeView: View {
                         Spacer()
                     }
                     .padding(.vertical, 8)
- 
+
                 } else if allMatches.isEmpty {
                     ForEach(recipe.ingredientList, id: \.self) { item in
                         ingredientRow(recipeId: recipe.id, item: item)
                     }
- 
+
                 } else {
-                    // Use allGrouped.keys as the canonical ingredient list — this guarantees
-                    // the keys used for lookup ALWAYS match what groupedMatches stored them as.
-                    // Sort by first-seen order using the orderedIngredients index.
+                    // Store summary banner — shown for both modes
+                    let valueStores: [String] = {
+                        // Unique stores that would be visited if picking cheapest per ingredient
+                        var seen = Set<String>()
+                        var result: [String] = []
+                        for item in ingredients {
+                            if let store = (allGrouped[item] ?? []).first?.matched_store,
+                               seen.insert(store).inserted {
+                                result.append(store)
+                            }
+                        }
+                        return result
+                    }()
+
+                    let displayStores = timeSavePlan?.stores ?? valueStores
+                    if !displayStores.isEmpty {
+                        HStack(spacing: 5) {
+                            Image(systemName: "mappin.and.ellipse")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(shoppingMode == .timeSave ? Color.blue : Color.green)
+                            Text("\(displayStores.count) stop\(displayStores.count == 1 ? "" : "s"): \(displayStores.joined(separator: " · "))")
+                                .font(.caption)
+                                .foregroundStyle(Color.primary.opacity(0.75))
+                        }
+                        .padding(.vertical, 2)
+                    }
+
+
                     let orderedKeys = ingredients.filter { allGrouped[$0] != nil }
                     ForEach(orderedKeys, id: \.self) { item in
-                        // For store filters: show only that store's matches for this ingredient.
-                        // If the store has nothing for this ingredient, fall back to the full
-                        // cheapest pool so the row is ALWAYS visible regardless of store choice.
                         let allForItem = allGrouped[item] ?? []
+                        // Value: all matches (cheapest first). Time Save: single best match from plan.
                         let displayMatches: [ScrapedRecipeMatch] = {
-                            guard let storeName = storeFilter.storeName else { return allForItem }
-                            let storeOnly = allForItem.filter {
-                                $0.matched_store?.localizedCaseInsensitiveContains(storeName) == true
+                            if let plan = timeSavePlan {
+                                if let best = plan.matchFor[item] { return [best] }
+                                return allForItem.prefix(1).map { $0 }
                             }
-                            return storeOnly.isEmpty ? allForItem : storeOnly
+                            return allForItem
                         }()
                         IngredientMatchRow(
                             ingredient: item,
@@ -250,20 +296,22 @@ struct RecipeView: View {
                 }
  
                 Button {
-                    let excluded   = excludedIngredientsByRecipe[recipe.id] ?? []
-                    let allM       = matchesByRecipe[recipe.id] ?? []
-                    // Use processMatches so grouped keys and ordered list are always in sync.
+                    let excluded = excludedIngredientsByRecipe[recipe.id] ?? []
+                    let allM     = matchesByRecipe[recipe.id] ?? []
                     let (allGrouped, processedIngredients) = processMatches(allM)
                     let ingredients = allM.isEmpty ? recipe.ingredientList : processedIngredients
- 
+                    // For Time Save, resolve the plan once so every ingredient gets the right store.
+                    let plan: TimeSavePlan? = shoppingMode == .timeSave
+                        ? computeTimeSavePlan(allGrouped: allGrouped, ingredients: processedIngredients)
+                        : nil
+
                     for item in ingredients where !excluded.contains(item) {
                         let allForItem = allGrouped[item] ?? []
                         let top: ScrapedRecipeMatch? = {
-                            guard let storeName = storeFilter.storeName else { return allForItem.first }
-                            let storeOnly = allForItem.filter {
-                                $0.matched_store?.localizedCaseInsensitiveContains(storeName) == true
+                            if let plan {
+                                return plan.matchFor[item] ?? allForItem.first
                             }
-                            return (storeOnly.isEmpty ? allForItem : storeOnly).first
+                            return allForItem.first // Value: cheapest
                         }()
                         if let top {
                             cartStore.add(
@@ -360,7 +408,90 @@ struct RecipeView: View {
         processMatches(matches).ordered
     }
  
-    private func loadMatchesIfNeeded(for recipeId: Int) {
+    /// Deterministic greedy set-cover: picks the fewest stores that together cover
+    /// all ingredients. Ties in coverage count are broken by which store gives the
+    /// lowest total price across its covered ingredients — so results never change
+    /// when toggling between modes.
+    private func computeTimeSavePlan(
+        allGrouped: [String: [ScrapedRecipeMatch]],
+        ingredients: [String]
+    ) -> TimeSavePlan {
+        // Build store -> cheapest price per ingredient it carries
+        var storeCheapest: [String: [String: Double]] = [:]
+        for (ingredient, matches) in allGrouped {
+            for match in matches {
+                guard let store = match.matched_store else { continue }
+                let price = match.min_price ?? Double.infinity
+                if storeCheapest[store] == nil { storeCheapest[store] = [:] }
+                if storeCheapest[store]![ingredient] == nil ||
+                   price < storeCheapest[store]![ingredient]! {
+                    storeCheapest[store]![ingredient] = price
+                }
+            }
+        }
+
+        // store -> set of ingredients covered
+        let storeCoverage: [String: Set<String>] = storeCheapest.mapValues { Set($0.keys) }
+
+        var selectedStores: [String] = []
+        var covered = Set<String>()
+        let allIngredients = Set(ingredients)
+
+        while covered != allIngredients {
+            let remaining = allIngredients.subtracting(covered)
+
+            // Score every candidate store: primary = most uncovered ingredients,
+            // tiebreak = lowest total price for those ingredients (deterministic)
+            var bestStore: String? = nil
+            var bestCount = 0
+            var bestPrice = Double.infinity
+
+            // Sort by name first so iteration order is deterministic before scoring
+            let sortedStores = storeCoverage.keys.sorted()
+            for store in sortedStores {
+                guard !selectedStores.contains(store),
+                      let storeItems = storeCoverage[store] else { continue }
+                let newlyCovered = storeItems.intersection(remaining)
+                let count = newlyCovered.count
+                guard count > 0 else { continue }
+
+                // Total price for ingredients this store would cover
+                let totalPrice = newlyCovered.reduce(0.0) { sum, ing in
+                    sum + (storeCheapest[store]?[ing] ?? Double.infinity)
+                }
+
+                if count > bestCount || (count == bestCount && totalPrice < bestPrice) {
+                    bestCount = count
+                    bestPrice = totalPrice
+                    bestStore = store
+                }
+            }
+
+            guard let chosen = bestStore, bestCount > 0 else { break }
+            selectedStores.append(chosen)
+            if let items = storeCoverage[chosen] {
+                covered.formUnion(items)
+            }
+        }
+
+        // For each ingredient: pick cheapest match from any selected store,
+        // fall back to cheapest overall if no selected store carries it.
+        var matchFor: [String: ScrapedRecipeMatch] = [:]
+        for ingredient in ingredients {
+            let allForItem = allGrouped[ingredient] ?? []
+            // Among selected-store matches, pick the cheapest one
+            let storeMatches = allForItem.filter {
+                selectedStores.contains($0.matched_store ?? "")
+            }
+            matchFor[ingredient] = storeMatches.min(by: {
+                ($0.min_price ?? Double.infinity) < ($1.min_price ?? Double.infinity)
+            }) ?? allForItem.first
+        }
+
+        return TimeSavePlan(stores: selectedStores, matchFor: matchFor)
+    }
+
+        private func loadMatchesIfNeeded(for recipeId: Int) {
         guard matchesByRecipe[recipeId] == nil,
               !loadingMatchesFor.contains(recipeId) else { return }
         loadingMatchesFor.insert(recipeId)
