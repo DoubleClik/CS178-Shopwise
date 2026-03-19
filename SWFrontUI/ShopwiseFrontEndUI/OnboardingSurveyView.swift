@@ -10,14 +10,12 @@ struct OnboardingSurveyView: View {
     @State private var errorMessage: String?
 
     let dietOptions = [
-        "Vegetarian", "Vegan", "Pescatarian",
-        "Keto", "Gluten-Free", "Dairy-Free",
-        "Halal", "Kosher"
+        "Vegan", "Vegetarian", "Pescatarian", "Dairy-Free"
     ]
 
     let allergyOptions = [
-        "Peanuts", "Tree Nuts", "Dairy", "Eggs",
-        "Soy", "Wheat", "Shellfish", "Fish"
+        "Peanuts", "Tree Nuts", "Dairy", "Egg",
+        "Fish", "Shellfish", "Soy", "Wheat"
     ]
 
     var onComplete: (() -> Void)? = nil
@@ -87,7 +85,7 @@ struct OnboardingSurveyView: View {
                 .disabled(isSaving)
             }
         }
-        .navigationTitle("Your Preferences")
+        .navigationTitle("Dietary Compass")
         .task {
             await loadPreferences()
         }

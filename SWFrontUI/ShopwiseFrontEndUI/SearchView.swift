@@ -44,10 +44,10 @@ struct SearchView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
 
-                Text("ShopWise")
+                /*Text("ShopWise")
                     .font(.system(size: 34, weight: .bold))
                     .padding(.top, 6)
-                    .padding(.bottom, 4)
+                    .padding(.bottom, 4)*/
 
                 // Search bar
                 HStack(spacing: 10) {

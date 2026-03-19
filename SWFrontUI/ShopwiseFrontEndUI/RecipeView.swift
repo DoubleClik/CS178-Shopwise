@@ -31,6 +31,7 @@ struct RecipeView: View {
         List { content }
             .listStyle(.plain)
             .navigationTitle("ShopWise")
+            .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $query, prompt: "Search recipes…")
             .appToolbar()
             .task { await loadRecipes(reset: true) }
@@ -105,7 +106,6 @@ struct RecipeView: View {
                         .frame(width: 67, height: 67)
                         .overlay(Image(systemName: "fork.knife").foregroundStyle(.secondary))
                 }
-
                 VStack(alignment: .leading, spacing: 6) {
                     Text(recipe.title).font(.headline).lineLimit(2)
                 }

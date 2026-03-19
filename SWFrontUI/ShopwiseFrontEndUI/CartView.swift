@@ -54,6 +54,14 @@ struct CartView: View {
                                                 .foregroundStyle(.secondary)
                                         }
                                         Spacer()
+                                        Button(role: .destructive) {
+                                            removeGroup(group.id)
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .padding(.trailing, 2)
                                         Image(systemName: expandedRecipeIds.contains(group.id) ? "chevron.up" : "chevron.down")
                                             .foregroundStyle(.secondary)
                                     }
@@ -123,7 +131,7 @@ struct CartView: View {
                 }
             }
         }
-        .navigationTitle("Cart")
+        .navigationTitle("Shopping Cart")
         .appToolbar()
         .navigationDestination(isPresented: $showShoppingList) {
             ShoppingListView()
@@ -201,6 +209,13 @@ struct CartView: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private func removeGroup(_ groupId: String) {
+        let itemsToRemove = cartStore.items.filter { $0.groupId == groupId }
+        for item in itemsToRemove {
+            cartStore.remove(item)
+        }
     }
 
     private func groupSubtotal(for group: RecipeGroup) -> Double {
