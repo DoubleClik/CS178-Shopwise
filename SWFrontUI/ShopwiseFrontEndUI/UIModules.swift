@@ -1,5 +1,11 @@
 import SwiftUI
 
+enum Theme {
+    static let primary = Color("PrimaryBlue")
+    static let secondary = Color("SecondaryGold")
+    static let muted = Color(.secondaryLabel)
+}
+
 struct CategoryChip: View {
     let title: String
     let isSelected: Bool
@@ -81,3 +87,4 @@ struct ItemCardView: View {
         }
     }
 }
+

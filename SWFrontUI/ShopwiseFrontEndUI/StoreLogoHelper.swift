@@ -24,6 +24,16 @@ func storeLogoAsset(for storeName: String) -> String? {
         return "logo_smartfinal"
     case "99 Ranch", "99 Ranch Market":
         return "logo_99ranch"
+    case "Vallarta Supermarkets":
+        return "vallartalogo"
+    case "Cardenas Markets":
+        return "cardenaslogo"
+    case "El Super":
+        return "superlogo"
+    case "Northgate Market":
+        return "northgatelogo"
+    case "Major Market":
+        return "majorlogo"
     default:
         return nil
     }

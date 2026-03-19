@@ -10,14 +10,12 @@ struct OnboardingSurveyView: View {
     @State private var errorMessage: String?
 
     let dietOptions = [
-        "Vegetarian", "Vegan", "Pescatarian",
-        "Keto", "Gluten-Free", "Dairy-Free",
-        "Halal", "Kosher"
+        "Vegan", "Vegetarian", "Pescatarian", "Dairy-Free"
     ]
 
     let allergyOptions = [
-        "Peanuts", "Tree Nuts", "Dairy", "Eggs",
-        "Soy", "Wheat", "Shellfish", "Fish"
+        "Peanuts", "Tree Nuts", "Dairy", "Egg",
+        "Fish", "Shellfish", "Soy", "Wheat"
     ]
 
     var onComplete: (() -> Void)? = nil
@@ -87,7 +85,7 @@ struct OnboardingSurveyView: View {
                 .disabled(isSaving)
             }
         }
-        .navigationTitle("Your Preferences")
+        .navigationTitle("Dietary Compass")
         .task {
             await loadPreferences()
         }
@@ -157,8 +155,8 @@ private struct PreferenceChipGrid: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .frame(maxWidth: .infinity)
-                        .background(isSelected ? Color.blue.opacity(0.18) : Color(.systemGray6))
-                        .foregroundStyle(isSelected ? Color.blue : Color.primary)
+                        .background(isSelected ? Theme.primary.opacity(0.18) : Color(.systemGray6))
+                        .foregroundStyle(isSelected ? Theme.primary : Color.primary)
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)

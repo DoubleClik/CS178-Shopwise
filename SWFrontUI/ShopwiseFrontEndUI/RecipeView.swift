@@ -35,6 +35,8 @@ struct RecipeView: View {
     @State private var isLoadingMore = false
     @State private var excludedIngredientsByRecipe: [Int: Set<String>] = [:]
     @State private var expandedInstructionIds: Set<Int> = []
+    @State private var expandedIngredientIds: Set<Int> = []
+    @State private var selectedMatchIndex: [String: Int] = [:]
  
     // Shopping mode – persists across recipe expansions
     @State private var shoppingMode: ShoppingMode = .value
@@ -52,6 +54,7 @@ struct RecipeView: View {
         List { content }
             .listStyle(.plain)
             .navigationTitle("ShopWise")
+            .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $query, prompt: "Search recipes…")
             .appToolbar()
             .task { await loadRecipes(reset: true) }
@@ -128,7 +131,9 @@ struct RecipeView: View {
                 }
  
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(recipe.title).font(.headline).lineLimit(2)
+                    Text(recipe.title)
+                        .font(.headline)
+                        .lineLimit(expandedID == recipe.id ? nil : 2)
                 }
  
                 Spacer()
@@ -143,81 +148,91 @@ struct RecipeView: View {
         CardContainer {
             VStack(alignment: .leading, spacing: 12) {
  
-                HStack {
-                    Text("Ingredients").font(.headline)
-                    Spacer()
-                }
- 
-                // Mode picker – only shown once matches are loaded
-                let allMatches = matchesByRecipe[recipe.id] ?? []
-                if !allMatches.isEmpty {
-                    HStack(spacing: 4) {
-                        ForEach(ShoppingMode.allCases, id: \.self) { mode in
-                            let isSelected = shoppingMode == mode
-                            Button {
-                                shoppingMode = mode
-                            } label: {
-                                HStack(spacing: 5) {
-                                    Image(systemName: mode == .value ? "tag.fill" : "clock.arrow.2.circlepath")
-                                        .font(.system(size: 12, weight: .semibold))
-                                    Text(mode.label)
-                                        .font(.system(size: 14, weight: .semibold))
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 9)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .fill(isSelected ? Color.primary : Color.clear)
-                                )
-                                .foregroundStyle(isSelected ? Color(UIColor.systemBackground) : Color.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        toggleIngredients(recipe.id)
                     }
-                    .padding(4)
-                    .background(Color(.systemGray5))
-                    .clipShape(RoundedRectangle(cornerRadius: 13))
-                }
-
-                let isLoadingMatches = loadingMatchesFor.contains(recipe.id)
-                let (allGrouped, ingredients) = processMatches(allMatches)
-                // For Time Save mode, compute the optimal store plan once here.
-                let timeSavePlan: TimeSavePlan? = shoppingMode == .timeSave
-                    ? computeTimeSavePlan(allGrouped: allGrouped, ingredients: ingredients)
-                    : nil
-
-                if isLoadingMatches {
+                } label: {
                     HStack {
+                        Text("Ingredients").font(.headline)
                         Spacer()
-                        VStack(spacing: 6) {
-                            ProgressView()
-                            Text("Finding products…")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
+                        Image(systemName: expandedIngredientIds.contains(recipe.id) ? "chevron.up" : "chevron.down")
+                            .foregroundStyle(.secondary)
                     }
-                    .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
 
-                } else if allMatches.isEmpty {
-                    ForEach(recipe.ingredientList, id: \.self) { item in
-                        ingredientRow(recipeId: recipe.id, item: item)
-                    }
-
-                } else {
-                    // Store summary banner — shown for both modes
-                    let valueStores: [String] = {
-                        // Unique stores that would be visited if picking cheapest per ingredient
-                        var seen = Set<String>()
-                        var result: [String] = []
-                        for item in ingredients {
-                            if let store = (allGrouped[item] ?? []).first?.matched_store,
-                               seen.insert(store).inserted {
-                                result.append(store)
+                if expandedIngredientIds.contains(recipe.id) {
+                    // Mode picker – only shown once matches are loaded
+                    let allMatches = matchesByRecipe[recipe.id] ?? []
+                    if !allMatches.isEmpty {
+                        HStack(spacing: 4) {
+                            ForEach(ShoppingMode.allCases, id: \.self) { mode in
+                                let isSelected = shoppingMode == mode
+                                Button {
+                                    shoppingMode = mode
+                                } label: {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: mode == .value ? "tag.fill" : "clock.arrow.2.circlepath")
+                                            .font(.system(size: 12, weight: .semibold))
+                                        Text(mode.label)
+                                            .font(.system(size: 14, weight: .semibold))
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 9)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .fill(isSelected ? Color.primary : Color.clear)
+                                    )
+                                    .foregroundStyle(isSelected ? Color(UIColor.systemBackground) : Color.secondary)
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
-                        return result
-                    }()
+                        .padding(4)
+                        .background(Color(.systemGray5))
+                        .clipShape(RoundedRectangle(cornerRadius: 13))
+                    }
+
+                    let isLoadingMatches = loadingMatchesFor.contains(recipe.id)
+                    let (allGrouped, ingredients) = processMatches(allMatches)
+                    // For Time Save mode, compute the optimal store plan once here.
+                    let timeSavePlan: TimeSavePlan? = shoppingMode == .timeSave
+                        ? computeTimeSavePlan(allGrouped: allGrouped, ingredients: ingredients)
+                        : nil
+
+                    if isLoadingMatches {
+                        HStack {
+                            Spacer()
+                            VStack(spacing: 6) {
+                                ProgressView()
+                                Text("Finding products…")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .padding(.vertical, 8)
+
+                    } else if allMatches.isEmpty {
+                        ForEach(recipe.ingredientList, id: \.self) { item in
+                            ingredientRow(recipeId: recipe.id, item: item)
+                        }
+
+                    } else {
+                        // Store summary banner — shown for both modes
+                        let valueStores: [String] = {
+                            // Unique stores that would be visited if picking cheapest per ingredient
+                            var seen = Set<String>()
+                            var result: [String] = []
+                            for item in ingredients {
+                                if let store = (allGrouped[item] ?? []).first?.matched_store,
+                                   seen.insert(store).inserted {
+                                    result.append(store)
+                                }
+                            }
+                            return result
+                        }()
 
                     let displayStores = timeSavePlan?.stores ?? valueStores
                     if !displayStores.isEmpty {
@@ -247,6 +262,7 @@ struct RecipeView: View {
                         IngredientMatchRow(
                             ingredient: item,
                             matches: displayMatches,
+                            selectedRank: bindingForSelectedRank(recipeId: recipe.id, ingredient: item, matchCount: displayMatches.count),
                             isExcluded: excludedIngredientsByRecipe[recipe.id]?.contains(item) == true,
                             onToggle: { toggleIngredient(recipeId: recipe.id, item: item) },
                             onAdd: { match in
@@ -255,13 +271,15 @@ struct RecipeView: View {
                                     recipeTitle: recipe.title,
                                     name: match.matched_name ?? item,
                                     unit: match.matched_size ?? "",
-                                    price: match.min_price ?? 0
+                                    price: match.min_price ?? 0,
+                                    storeName: match.matched_store
                                 )
                             }
                         )
                     }
                 }
- 
+            }
+
                 if let instructions = recipe.instructions,
                    !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Divider().padding(.vertical, 2)
@@ -310,7 +328,13 @@ struct RecipeView: View {
                             if let plan {
                                 return plan.matchFor[item] ?? allForItem.first
                             }
-                            return allForItem.first // Value: cheapest
+                            // Value mode: honor the user's selected rank if available
+                            let key = matchKey(recipeId: recipe.id, ingredient: item)
+                            let idx = selectedMatchIndex[key] ?? 0
+                            if idx >= 0 && idx < allForItem.count {
+                                return allForItem[idx]
+                            }
+                            return allForItem.first
                         }()
                         if let top {
                             cartStore.add(
@@ -318,7 +342,8 @@ struct RecipeView: View {
                                 recipeTitle: recipe.title,
                                 name: top.matched_name ?? item,
                                 unit: top.matched_size ?? "",
-                                price: top.min_price ?? 0
+                                price: top.min_price ?? 0,
+                                storeName: top.matched_store
                             )
                         } else {
                             cartStore.add(
@@ -330,7 +355,11 @@ struct RecipeView: View {
                     }
                 } label: {
                     let excluded = excludedIngredientsByRecipe[recipe.id] ?? []
-                    let selectedCount = max(0, recipe.ingredientList.count - excluded.count)
+                    let matches = matchesByRecipe[recipe.id] ?? []
+                    let ingredients = matches.isEmpty
+                        ? recipe.ingredientList
+                        : orderedIngredients(from: matches)
+                    let selectedCount = max(0, ingredients.count - excluded.count)
                     VStack(spacing: 4) {
                         Text("\(selectedCount) selected")
                             .font(.footnote)
@@ -339,6 +368,7 @@ struct RecipeView: View {
                     }
                     .frame(maxWidth: .infinity)
                 }
+                .tint(Theme.primary)
                 .buttonStyle(.borderedProminent)
             }
         }
@@ -519,13 +549,39 @@ struct RecipeView: View {
             expandedInstructionIds.insert(recipeId)
         }
     }
+
+    private func toggleIngredients(_ recipeId: Int) {
+        if expandedIngredientIds.contains(recipeId) {
+            expandedIngredientIds.remove(recipeId)
+        } else {
+            expandedIngredientIds.insert(recipeId)
+        }
+    }
+
+    private func matchKey(recipeId: Int, ingredient: String) -> String {
+        "\(recipeId)::\(ingredient)"
+    }
+
+    private func bindingForSelectedRank(recipeId: Int, ingredient: String, matchCount: Int) -> Binding<Int> {
+        let key = matchKey(recipeId: recipeId, ingredient: ingredient)
+        return Binding<Int>(
+            get: {
+                let idx = selectedMatchIndex[key] ?? 0
+                if matchCount == 0 { return 0 }
+                return min(max(idx, 0), matchCount - 1)
+            },
+            set: { newValue in
+                selectedMatchIndex[key] = newValue
+            }
+        )
+    }
  
     private func ingredientRow(recipeId: Int, item: String) -> some View {
         let isExcluded = excludedIngredientsByRecipe[recipeId]?.contains(item) == true
         return Button { toggleIngredient(recipeId: recipeId, item: item) } label: {
             HStack(spacing: 10) {
                 Image(systemName: isExcluded ? "minus.circle" : "checkmark.circle.fill")
-                    .foregroundStyle(isExcluded ? Color.secondary : Color.green)
+                    .foregroundStyle(isExcluded ? Color.secondary : Theme.secondary)
                 Text(item)
                     .foregroundStyle(isExcluded ? Color.secondary : Color.primary)
                     .strikethrough(isExcluded, color: .secondary)
@@ -568,11 +624,10 @@ struct RecipeView: View {
 struct IngredientMatchRow: View {
     let ingredient: String
     let matches: [ScrapedRecipeMatch]
+    @Binding var selectedRank: Int
     let isExcluded: Bool
     let onToggle: () -> Void
     let onAdd: (ScrapedRecipeMatch) -> Void
- 
-    @State private var selectedRank = 0
  
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -580,7 +635,7 @@ struct IngredientMatchRow: View {
             Button(action: onToggle) {
                 HStack(spacing: 10) {
                     Image(systemName: isExcluded ? "minus.circle" : "checkmark.circle.fill")
-                        .foregroundStyle(isExcluded ? Color.secondary : Color.green)
+                        .foregroundStyle(isExcluded ? Color.secondary : Theme.secondary)
                     Text(ingredient)
                         .font(.subheadline)
                         .foregroundStyle(isExcluded ? Color.secondary : Color.primary)
@@ -637,14 +692,14 @@ struct IngredientMatchRow: View {
                         VStack(alignment: .trailing, spacing: 4) {
                             Text(match.displayPrice)
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.blue)
- 
+                                .foregroundStyle(Theme.primary)
+
                             Button { onAdd(match) } label: {
                                 Image(systemName: "cart.badge.plus")
                                     .font(.system(size: 14))
                                     .padding(6)
-                                    .background(Color.blue.opacity(0.12))
-                                    .foregroundStyle(.blue)
+                                    .background(Theme.primary.opacity(0.12))
+                                    .foregroundStyle(Theme.primary)
                                     .clipShape(Circle())
                             }
                             .buttonStyle(.plain)
@@ -659,6 +714,10 @@ struct IngredientMatchRow: View {
         .padding(.vertical, 2)
         // Reset the picker whenever the matches array changes (e.g. store filter switched).
         // Without this, selectedRank can point past the end of the new array and nothing renders.
-        .onChange(of: matches.map { $0.id }) { _, _ in selectedRank = 0 }
+        .onChange(of: matches.map { $0.id }) { _, _ in
+            if selectedRank >= matches.count {
+                selectedRank = 0
+            }
+        }
     }
 }

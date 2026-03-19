@@ -219,7 +219,9 @@ struct MapView: View {
             ranchMarketSection
             locationSection
         }
+        .listStyle(.plain)
         .navigationTitle("ShopWise")
+        .navigationBarTitleDisplayMode(.inline)
         .appToolbar()
         .task { }  // kroger stores are hardcoded — swap for live fetch once kroger_locations is populated
         .onAppear { locationManager.requestPermission() }

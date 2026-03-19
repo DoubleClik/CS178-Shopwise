@@ -32,11 +32,11 @@ struct AuthView: View {
                     VStack(spacing: 10) {
                         Image(systemName: "cart")
                             .font(.system(size: 42, weight: .semibold))
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(Theme.primary)
 
                         Text("ShopWise")
                             .font(.title3)
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(Theme.primary)
                             .bold()
                     }
                     .padding(.top, 10)
