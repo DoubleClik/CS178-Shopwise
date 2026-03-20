@@ -594,7 +594,7 @@ struct RecipeView: View {
     private func loadRecipes(reset: Bool = true) async {
         if isLoadingMore { return }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
- 
+
         if reset {
             offset = 0; recipes = []; hasMore = true; isLoading = true
         } else {
@@ -602,11 +602,19 @@ struct RecipeView: View {
             isLoadingMore = true
         }
         errorText = nil
- 
+
         do {
-            let fetched = try await auth.fetchRecipes(
+            guard let userId = auth.userID else {
+                errorText = "Please sign in to load personalized recipes."
+                isLoading = false
+                isLoadingMore = false
+                return
+            }
+            let fetched = try await auth.fetchFilteredRecipes(
+                userId: userId,
                 search: trimmed.isEmpty ? nil : trimmed,
-                limit: pageSize, offset: offset
+                limit: pageSize,
+                offset: offset
             )
             if reset { recipes = fetched } else { recipes.append(contentsOf: fetched) }
             offset += fetched.count

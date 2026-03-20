@@ -43,7 +43,6 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .environmentObject(AuthManager())
-        .modelContainer(for: Item.self, inMemory: true)
 }
 
 #Preview {

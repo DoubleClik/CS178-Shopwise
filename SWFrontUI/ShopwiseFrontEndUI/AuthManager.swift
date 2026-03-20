@@ -337,116 +337,6 @@ struct SupabaseError: Codable {
     let msg: String?
 }
  
- 
-// MARK: - Kroger Items
- 
-struct KrogerItem: Codable, Identifiable {
-    let productId: Int
-    let name: String
-    let brand: String?
-    let price: String?        // "1.49;1.49;2.49" — index-aligned with store_ids
-    let classifier: String?
-    let categories: String?
-    let image_url: String?
-    let size: String?
-    let search_keyword: String?
-    let store_ids: String?
- 
-    var id: Int { productId }
- 
-    var priceList: [Double] {
-        guard let price else { return [] }
-        return price.split(separator: ";")
-            .compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
-    }
- 
-    var storeIdList: [String] {
-        guard let store_ids else { return [] }
-        return store_ids.split(separator: ";")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-    }
- 
-    var minPrice: Double? {
-        priceList.filter { $0 > 0 }.min()
-    }
- 
-    func price(forStoreId storeId: String) -> Double? {
-        guard let index = storeIdList.firstIndex(of: storeId),
-              index < priceList.count else { return nil }
-        return priceList[index]
-    }
- 
-    func displayPrice(forStoreId storeId: String? = nil) -> String {
-        let p: Double?
-        if let storeId {
-            p = price(forStoreId: storeId) ?? minPrice
-        } else {
-            p = minPrice
-        }
-        guard let p else { return "Price N/A" }
-        return String(format: "$%.2f", p)
-    }
- 
-    var imageURL: URL? {
-        guard let img = image_url, !img.isEmpty else { return nil }
-        return URL(string: img)
-    }
-}
- 
-extension AuthManager {
-    func fetchKrogerItems(
-        search: String? = nil,
-        classifier: String? = nil,
-        limit: Int = 50,
-        offset: Int = 0
-    ) async throws -> [KrogerItem] {
-        let base = supabaseURL
-            .appendingPathComponent("rest/v1")
-            .appendingPathComponent("kroger_ingredients2")
- 
-        var comps = URLComponents(url: base, resolvingAgainstBaseURL: false)!
-        var q: [URLQueryItem] = [
-            URLQueryItem(
-                name: "select",
-                value: "productId,name,brand,price,classifier,categories,image_url,size,search_keyword,store_ids"
-            ),
-            URLQueryItem(name: "limit",  value: "\(limit)"),
-            URLQueryItem(name: "offset", value: "\(offset)"),
-            URLQueryItem(name: "order",  value: "productId.asc"),
-        ]
- 
-        if let s = search?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
-            q.append(URLQueryItem(
-                name: "or",
-                value: "(name.ilike.*\(s)*,search_keyword.ilike.*\(s)*)"
-            ))
-        }
- 
-        if let cls = classifier, !cls.isEmpty {
-            q.append(URLQueryItem(name: "classifier", value: "eq.\(cls)"))
-        }
- 
-        comps.queryItems = q
-        guard let url = comps.url else { throw URLError(.badURL) }
- 
-        let (data, _) = try await request(
-            url: url,
-            method: "GET",
-            jsonBody: Optional<String>.none,
-            bearerToken: accessToken
-        )
- 
-        do {
-            return try JSONDecoder().decode([KrogerItem].self, from: data)
-        } catch {
-            let raw = String(data: data, encoding: .utf8) ?? "<non-utf8>"
-            print("❌ KrogerItem decode error: \(error)")
-            print("❌ Raw JSON: \(raw.prefix(500))")
-            throw error
-        }
-    }
-}
- 
 //Onboard survey fetch/save
 struct UserPreferencesRow: Codable {
     let user_id: String
@@ -560,6 +450,34 @@ extension AuthManager {
             bearerToken: accessToken
         )
  
+        return try JSONDecoder().decode([RecipeRow].self, from: data)
+    }
+}
+
+//Filtered Recipes
+extension AuthManager {
+    func fetchFilteredRecipes(userId: String, search: String? = nil, limit: Int = 50, offset: Int = 0) async throws -> [RecipeRow] {
+        let base = supabaseURL
+            .appendingPathComponent("rest/v1")
+            .appendingPathComponent("rpc")
+            .appendingPathComponent("filtered_recipes")
+
+        var body: [String: String] = [
+            "p_user_id": userId,
+            "p_limit": "\(limit)",
+            "p_offset": "\(offset)"
+        ]
+        if let search, !search.isEmpty {
+            body["p_search"] = search
+        }
+
+        let (data, _) = try await request(
+            url: base,
+            method: "POST",
+            jsonBody: body,
+            bearerToken: accessToken
+        )
+
         return try JSONDecoder().decode([RecipeRow].self, from: data)
     }
 }
