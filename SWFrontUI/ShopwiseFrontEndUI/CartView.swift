@@ -3,64 +3,131 @@ import SwiftUI
 struct CartView: View {
     @State private var showShoppingList = false
     @EnvironmentObject private var cartStore: CartStore
+    @State private var expandedRecipeIds: Set<String> = []
 
     var body: some View {
         List {
-            Section("Items") {
-                if cartStore.items.isEmpty {
-                    Text("Cart is empty")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(cartStore.items) { item in
-                        HStack(alignment: .top, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(item.name)
-                                    .font(.headline)
-                                Text(item.unit)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                Text(String(format: "$%.2f", item.price))
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            HStack(spacing: 10) {
-                                Button {
-                                    cartStore.decrement(item)
-                                } label: {
-                                    Image(systemName: "minus.circle")
-                                }
-                                .buttonStyle(.borderless)
-
-                                Text("\(item.quantity)")
-                                    .font(.headline)
-                                    .frame(minWidth: 24)
-
-                                Button {
-                                    cartStore.increment(item)
-                                } label: {
-                                    Image(systemName: "plus.circle")
-                                }
-                                .buttonStyle(.borderless)
-                            }
+            if !cartStore.items.isEmpty {
+                Section("Summary") {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Total Items")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Text("\(cartStore.itemCount)")
+                                .font(.title3.weight(.semibold))
                         }
-                        .padding(.vertical, 4)
-                    }
-                    .onDelete { indexSet in
-                        for idx in indexSet {
-                            cartStore.remove(cartStore.items[idx])
+
+                        Spacer()
+
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("Total")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Text(String(format: "$%.2f", cartStore.total))
+                                .font(.title3.weight(.semibold))
+                                .monospacedDigit()
                         }
                     }
                 }
             }
 
-            Section("Summary") {
-                HStack {
-                    Text("Total")
-                    Spacer()
-                    Text(String(format: "$%.2f", cartStore.total))
-                        .foregroundStyle(.secondary)
+            if cartStore.items.isEmpty {
+                Section {
+                    VStack(spacing: 12) {
+                        Image(systemName: "cart")
+                            .font(.system(size: 44, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+
+                        Text("Your cart is empty")
+                            .font(.headline)
+
+                        Text("Add items from Search or Recipes to get started.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 20)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+                }
+            } else {
+                if !recipeGroups.isEmpty {
+                    Section("Recipes") {
+                        ForEach(recipeGroups, id: \.id) { group in
+                            VStack(alignment: .leading, spacing: 10) {
+                                Button {
+                                    toggle(group.id)
+                                } label: {
+                                    HStack(alignment: .firstTextBaseline) {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(group.title)
+                                                .font(.headline)
+                                            Text("\(group.items.count) items • \(formatCurrency(groupSubtotal(for: group)))")
+                                                .font(.subheadline)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        Button(role: .destructive) {
+                                            removeGroup(group.id)
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .padding(.trailing, 2)
+                                        Image(systemName: expandedRecipeIds.contains(group.id) ? "chevron.up" : "chevron.down")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+
+                                if expandedRecipeIds.contains(group.id) {
+                                    Divider()
+                                    let storeGroups = groupItemsByStore(group.items)
+                                    ForEach(storeGroups) { storeGroup in
+                                        storeHeader(storeGroup.store)
+                                        ForEach(Array(storeGroup.items.enumerated()), id: \.element.id) { index, item in
+                                            itemRow(item)
+                                            if index != storeGroup.items.count - 1 {
+                                                Divider()
+                                            }
+                                        }
+                                        if storeGroup.id != storeGroups.last?.id {
+                                            Divider()
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(Color(.secondarySystemBackground))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .stroke(Color.black.opacity(0.04), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 3)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        }
+                    }
+                }
+
+                Section("Individual Items") {
+                    if individualItems.isEmpty {
+                        Text("No individual items")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        let storeGroups = groupItemsByStore(individualItems)
+                        ForEach(storeGroups) { storeGroup in
+                            storeHeader(storeGroup.store)
+                            ForEach(storeGroup.items) { item in
+                                itemRow(item)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -73,11 +140,155 @@ struct CartView: View {
                 }
                 .disabled(cartStore.items.isEmpty)
             }
+
+            if !cartStore.items.isEmpty {
+                Section {
+                    Button(role: .destructive) {
+                        cartStore.clear()
+                    } label: {
+                        Text("Clear Cart")
+                    }
+                }
+            }
         }
-        .navigationTitle("Cart")
+        .navigationTitle("Shopping Cart")
         .appToolbar()
         .navigationDestination(isPresented: $showShoppingList) {
             ShoppingListView()
         }
     }
+
+    private var recipeGroups: [RecipeGroup] {
+        let items = cartStore.items
+        var groups: [String: RecipeGroup] = [:]
+        
+        for item in items {
+            guard let groupId = item.groupId, !groupId.isEmpty else { continue }
+            let title = item.groupTitle ?? "Recipe"
+
+            if let existing = groups[groupId] {
+                var newItems = existing.items
+                newItems.append(item)
+                groups[groupId] = RecipeGroup(id: existing.id, title: existing.title, items: newItems)
+            } else {
+                groups[groupId] = RecipeGroup(id: groupId, title: title, items: [item])
+            }
+        }
+
+        return groups.values
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    private var individualItems: [CartLineItem] {
+        cartStore.items.filter { $0.groupId == nil }
+    }
+
+    private func toggle(_ id: String) {
+        if expandedRecipeIds.contains(id) {
+            expandedRecipeIds.remove(id)
+        } else {
+            expandedRecipeIds.insert(id)
+        }
+    }
+
+    @ViewBuilder
+    private func itemRow(_ item: CartLineItem) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.name)
+                    .font(.headline)
+                if let store = item.storeName, !store.isEmpty {
+                    Text(store)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.secondary)
+                }
+                if !item.unit.isEmpty {
+                    Text(item.unit)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Text(String(format: "$%.2f", item.price))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            HStack(spacing: 10) {
+                Button {
+                    cartStore.decrement(item)
+                } label: {
+                    Image(systemName: "minus.circle")
+                }
+                .buttonStyle(.borderless)
+
+                Text("\(item.quantity)")
+                    .font(.headline)
+                    .frame(minWidth: 24)
+
+                Button {
+                    cartStore.increment(item)
+                } label: {
+                    Image(systemName: "plus.circle")
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+        .padding(.vertical, 4)
+        .swipeActions {
+            Button(role: .destructive) {
+                cartStore.remove(item)
+            } label: {
+                Label("Remove", systemImage: "trash")
+            }
+        }
+    }
+
+    private struct StoreGroup: Identifiable {
+        let id: String
+        let store: String
+        let items: [CartLineItem]
+    }
+
+    private func groupItemsByStore(_ items: [CartLineItem]) -> [StoreGroup] {
+        let grouped = Dictionary(grouping: items) { item in
+            let store = item.storeName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (store?.isEmpty == false) ? store! : "Unknown Store"
+        }
+        return grouped.map { key, value in
+            StoreGroup(id: key, store: key, items: value)
+        }
+        .sorted { $0.store.localizedCaseInsensitiveCompare($1.store) == .orderedAscending }
+    }
+
+    @ViewBuilder
+    private func storeHeader(_ store: String) -> some View {
+        HStack {
+            Text(store)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.primary)
+            Spacer()
+        }
+        .padding(.top, 4)
+    }
+
+    private func removeGroup(_ groupId: String) {
+        let itemsToRemove = cartStore.items.filter { $0.groupId == groupId }
+        for item in itemsToRemove {
+            cartStore.remove(item)
+        }
+    }
+
+    private func groupSubtotal(for group: RecipeGroup) -> Double {
+        group.items.reduce(0) { $0 + ($1.price * Double($1.quantity)) }
+    }
+
+    private func formatCurrency(_ value: Double) -> String {
+        String(format: "$%.2f", value)
+    }
+}
+
+private struct RecipeGroup: Identifiable {
+    let id: String
+    let title: String
+    let items: [CartLineItem]
 }

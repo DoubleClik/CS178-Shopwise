@@ -10,40 +10,54 @@ struct OnboardingSurveyView: View {
     @State private var errorMessage: String?
 
     let dietOptions = [
-        "Vegetarian", "Vegan", "Pescatarian",
-        "Keto", "Gluten-Free", "Dairy-Free",
-        "Halal", "Kosher"
+        "Vegan", "Vegetarian", "Pescatarian", "Dairy-Free"
     ]
 
     let allergyOptions = [
-        "Peanuts", "Tree Nuts", "Dairy", "Eggs",
-        "Soy", "Wheat", "Shellfish", "Fish", "Sesame"
+        "Peanuts", "Tree Nuts", "Dairy", "Egg",
+        "Fish", "Shellfish", "Soy", "Wheat"
     ]
 
     var onComplete: (() -> Void)? = nil
 
     var body: some View {
         List {
-            Section("Diet Preferences") {
-                ForEach(dietOptions, id: \.self) { option in
-                    PreferenceRow(
-                        title: option,
-                        isSelected: selectedDiets.contains(option)
-                    ) {
-                        toggle(option, in: &selectedDiets)
+            Section {
+                PreferenceChipGrid(
+                    options: dietOptions,
+                    selected: selectedDiets,
+                    onToggle: { toggle($0, in: &selectedDiets) }
+                )
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+
+                if !selectedDiets.isEmpty {
+                    Button("Clear Diet Preferences") {
+                        selectedDiets.removeAll()
                     }
                 }
+            } header: {
+                Text("Diet Preferences")
+            } footer: {
+                Text("Pick any that apply. You can update these anytime.")
             }
 
-            Section("Allergies") {
-                ForEach(allergyOptions, id: \.self) { option in
-                    PreferenceRow(
-                        title: option,
-                        isSelected: selectedAllergies.contains(option)
-                    ) {
-                        toggle(option, in: &selectedAllergies)
+            Section {
+                PreferenceChipGrid(
+                    options: allergyOptions,
+                    selected: selectedAllergies,
+                    onToggle: { toggle($0, in: &selectedAllergies) }
+                )
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+
+                if !selectedAllergies.isEmpty {
+                    Button("Clear Allergies") {
+                        selectedAllergies.removeAll()
                     }
                 }
+            } header: {
+                Text("Allergies")
+            } footer: {
+                Text("We’ll filter recipes and suggestions based on these.")
             }
 
             if let errorMessage {
@@ -71,7 +85,7 @@ struct OnboardingSurveyView: View {
                 .disabled(isSaving)
             }
         }
-        .navigationTitle("Your Preferences")
+        .navigationTitle("Dietary Compass")
         .task {
             await loadPreferences()
         }
@@ -120,20 +134,34 @@ struct OnboardingSurveyView: View {
     }
 }
 
-struct PreferenceRow: View {
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
+private struct PreferenceChipGrid: View {
+    let options: [String]
+    let selected: Set<String>
+    let onToggle: (String) -> Void
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 110), spacing: 10)
+    ]
 
     var body: some View {
-        Button(action: action) {
-            HStack {
-                Text(title)
-                Spacer()
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isSelected ? .blue : .secondary)
+        LazyVGrid(columns: columns, spacing: 10) {
+            ForEach(options, id: \.self) { option in
+                let isSelected = selected.contains(option)
+                Button {
+                    onToggle(option)
+                } label: {
+                    Text(option)
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                        .background(isSelected ? Theme.primary.opacity(0.18) : Color(.systemGray6))
+                        .foregroundStyle(isSelected ? Theme.primary : Color.primary)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
             }
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, 2)
     }
 }

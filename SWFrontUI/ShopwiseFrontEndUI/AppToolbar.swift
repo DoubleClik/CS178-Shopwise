@@ -1,23 +1,32 @@
 import SwiftUI
 
 struct AppToolbar: ViewModifier {
+    @State private var showAccount = false
+
     func body(content: Content) -> some View {
         content
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 14) {
-                        NavigationLink {
-                            SettingsView()
-                        } label: {
-                            Image(systemName: "gearshape")
-                        }
-
-                        NavigationLink {
-                            ProfileView()
-                        } label: {
-                            Image(systemName: "person.crop.circle")
-                        }
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: 8) {
+                        Image("ShopwiseLogo")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 22, height: 22)
+                        Text("ShopWise")
+                            .font(.headline)
                     }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showAccount = true
+                    } label: {
+                        Image(systemName: "person.crop.circle")
+                    }
+                }
+            }
+            .sheet(isPresented: $showAccount) {
+                NavigationStack {
+                    ProfileView()
                 }
             }
     }

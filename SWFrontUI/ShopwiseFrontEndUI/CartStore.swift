@@ -8,16 +8,33 @@ struct CartLineItem: Identifiable, Hashable {
     let unit: String
     let price: Double
     var quantity: Int
+    let groupId: String?
+    let groupTitle: String?
+    let storeName: String?
 
-    init(id: String = String(), name: String, unit: String, price: Double, quantity: Int = 1) {
-        self.id = id
-        self.name = name
-        self.unit = unit
-        self.price = price
-        self.quantity = quantity
+    init(
+        id: String = String(),
+        name: String,
+        unit: String,
+        price: Double,
+        quantity: Int = 1,
+        groupId: String? = nil,
+        groupTitle: String? = nil,
+        storeName: String? = nil
+    ){
+            self.id = id
+            self.name = name
+            self.unit = unit
+            self.price = price
+            self.quantity = quantity
+            self.groupId = groupId
+            self.groupTitle = groupTitle
+            self.storeName = storeName
     }
 
-    var lineTotal: Double { price * Double(quantity) }
+    var lineTotal: Double{
+        price * Double(quantity)
+    }
 }
 
 final class CartStore: ObservableObject {
@@ -39,7 +56,11 @@ final class CartStore: ObservableObject {
         add(id: ingredient.id, name: ingredient.name, unit: ingredient.unit, price: ingredient.price)
     }
 
-    func add(id: String, name: String, unit: String, price: Double) {
+    func add(name: String, unit: String, price: Double) {
+        add(id: name, name: name, unit: unit, price: price)
+    }
+
+    func add(id: String, name: String, unit: String, price: Double, storeName: String? = nil) {
         if let idx = items.firstIndex(where: { $0.id == id }) {
             items[idx].quantity += 1
         } else {
@@ -49,7 +70,40 @@ final class CartStore: ObservableObject {
                     name: name,
                     unit: unit,
                     price: price,
-                    quantity: 1
+                    quantity: 1,
+                    storeName: storeName
+                )
+            )
+        }
+    }
+
+    func add(recipeId: String, recipeTitle: String, name: String, unit: String, price: Double, storeName: String? = nil) {
+        let id = "\(recipeId)::\(name)"
+        if let idx = items.firstIndex(where: { $0.id == id }) {
+            items[idx].quantity += 1
+            if items[idx].groupId == nil {
+                items[idx] = CartLineItem(
+                    id: items[idx].id,
+                    name: items[idx].name,
+                    unit: items[idx].unit,
+                    price: items[idx].price,
+                    quantity: items[idx].quantity,
+                    groupId: recipeId,
+                    groupTitle: recipeTitle,
+                    storeName: storeName ?? items[idx].storeName
+                )
+            }
+        } else {
+            items.append(
+                CartLineItem(
+                    id: id,
+                    name: name,
+                    unit: unit,
+                    price: price,
+                    quantity: 1,
+                    groupId: recipeId,
+                    groupTitle: recipeTitle,
+                    storeName: storeName
                 )
             )
         }
