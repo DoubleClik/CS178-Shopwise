@@ -85,7 +85,7 @@ private let krogerStoresNearUCR: [StoreAnnotation] = [
 // MARK: - Stater Bros.
 private let staterBrosStoresNearUCR: [StoreAnnotation] = [
     StoreAnnotation(id: "stater_1", name: "Stater Bros.", chain: "Stater Bros.",
-                    address: "2841 Mary St, Riverside, CA 92506",
+                    address: "2995 Iowa Ave, Riverside, CA 92507",
                     coordinate: CLLocationCoordinate2D(latitude: 33.9859162, longitude: -117.341186), locationId: nil),
     StoreAnnotation(id: "stater_2", name: "Stater Bros.", chain: "Stater Bros.",
                     address: "4488 Magnolia Ave, Riverside, CA 92501",
