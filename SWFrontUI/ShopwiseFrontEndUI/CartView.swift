@@ -33,9 +33,23 @@ struct CartView: View {
             }
 
             if cartStore.items.isEmpty {
-                Section("Items") {
-                    Text("Cart is empty")
-                        .foregroundStyle(.secondary)
+                Section {
+                    VStack(spacing: 12) {
+                        Image(systemName: "cart")
+                            .font(.system(size: 44, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+
+                        Text("Your cart is empty")
+                            .font(.headline)
+
+                        Text("Add items from Search or Recipes to get started.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 20)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
                 }
             } else {
                 if !recipeGroups.isEmpty {
