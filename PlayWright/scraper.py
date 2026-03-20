@@ -53,10 +53,7 @@ from dotenv import load_dotenv
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from supabase import create_client
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-
+# Config
 _ENV_PATH = Path(__file__).parent.parent / ".env"
 load_dotenv(_ENV_PATH)
 
@@ -69,10 +66,8 @@ BASE_URL = "https://www.instacart.com/store/s?k={query}"
 GRID_WAIT_MS = 5_000
 
 
-# ---------------------------------------------------------------------------
-# Confirmed Instacart DOM selectors (verified against live DOM)
-# ---------------------------------------------------------------------------
 
+# Confirmed Instacart DOM selectors (verified against live DOM)
 STORE_ROW_SELECTOR    = '[data-testid="CrossRetailerResultRowWrapper"]'
 ITEM_CARD_SELECTOR    = '[data-testid^="item_list_item_"]'
 NEXT_PAGE_SELECTOR    = '[aria-label="Next page"]'
@@ -86,10 +81,7 @@ LOGIN_MODAL_SELECTOR   = (
 # Maximum carousel pages to advance per store row.
 MAX_CAROUSEL_PAGES = 10
 
-# ---------------------------------------------------------------------------
 # Ingredient parsing
-# ---------------------------------------------------------------------------
-
 def parse_ingredient(ingredient: str) -> tuple[str, str | None]:
     """
     Parse a taxonomy ingredient string into (search_term, filter_word).
@@ -114,10 +106,7 @@ def apply_name_filter(products: list[dict], filter_word: str | None) -> list[dic
     fw = filter_word.lower()
     return [p for p in products if p["name"] and fw in p["name"].lower()]
 
-# ---------------------------------------------------------------------------
 # Core scraper
-# ---------------------------------------------------------------------------
-
 async def scrape_query(page, query: str) -> list[dict]:
     """
     Scrape all product cards for *query* on the Instacart cross-retailer page.
@@ -126,7 +115,7 @@ async def scrape_query(page, query: str) -> list[dict]:
     """
     url = BASE_URL.format(query=quote_plus(query))
 
-    # -- Navigate ----------------------------------------------------------
+    # Navigate
     try:
         response = await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
         if response and response.status >= 400:
@@ -139,7 +128,7 @@ async def scrape_query(page, query: str) -> list[dict]:
         print(f"  [ERROR] Navigation error for query '{query}': {exc}")
         return []
 
-    # -- Block detection ---------------------------------------------------
+    # Block detection
     try:
         body_text = (await page.inner_text("body")).lower()
     except Exception:
@@ -157,16 +146,16 @@ async def scrape_query(page, query: str) -> list[dict]:
         print(f"  [WARN] Login modal detected for query '{query}' — skipping")
         return []
 
-    # -- Wait for store rows -----------------------------------------------
+    # Wait for store rows
     try:
         await page.wait_for_selector(STORE_ROW_SELECTOR, timeout=GRID_WAIT_MS)
     except PlaywrightTimeoutError:
         print(f"  [WARN] No store grid found for query '{query}' after {GRID_WAIT_MS}ms")
         return []
 
-    # -- Discovery + Scraping (merged) — process each carousel page inline --
-    # Cards are clicked immediately while their carousel page is active,
-    # so ElementHandles never become stale from carousel advancement.
+    # Discovery + Scraping (merged) — process each carousel page inline --
+    #   Cards are clicked immediately while their carousel page is active,
+    #   so ElementHandles never become stale from carousel advancement.
     store_rows = await page.query_selector_all(STORE_ROW_SELECTOR)
 
     if not store_rows:
@@ -414,10 +403,8 @@ def _empty_product(store_name: str) -> dict:
         "description": None, "out_of_stock": False,
     }
 
-# ---------------------------------------------------------------------------
-# Pipeline entry point
-# ---------------------------------------------------------------------------
 
+# Pipeline entry point
 async def run_pipeline(limit: int | None = None) -> None:
     """
     Full pipeline: fetch taxonomy → scrape Instacart → upsert to Supabase.
@@ -428,7 +415,7 @@ async def run_pipeline(limit: int | None = None) -> None:
             "SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in .env"
         )
 
-    # -- Fetch taxonomy ----------------------------------------------------
+    # Fetch taxonomy
     print("Fetching taxonomy from Supabase...")
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     response = supabase.table("taxonomy").select("ingredient").execute()
@@ -441,7 +428,7 @@ async def run_pipeline(limit: int | None = None) -> None:
 
     total_upserted = 0
 
-    # -- Scrape ------------------------------------------------------------
+    # Scrape
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=False,
