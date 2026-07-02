@@ -1,13 +1,13 @@
 # Shopwise
 
-Shopwise is a grocery price-comparison app. It scrapes live per-store prices from Instacart's
-cross-retailer search, stores them in Supabase, and gives an iOS app a fast way to answer
-"which store has this cheapest right now" — including turning a whole recipe into a
-cheapest-store shopping plan.
-
-It started as a personal/educational project to see whether real-time, multi-store price data
-could make grocery shopping (and recipe-based shopping in particular) meaningfully cheaper
-without needing each store's own app.
+Shopwise is a grocery price-comparison app built for UC Riverside students. Groceries near
+campus are spread across a dozen different chains (Ralphs, Food4Less, Stater Bros., Walmart,
+Sprouts, ALDI, and more around Riverside, CA), each with its own app and no easy way to compare
+them. Shopwise scrapes live per-store prices from Instacart's cross-retailer search for stores
+in the Riverside/UCR area, stores them in Supabase, and gives the iOS app a fast way to answer
+"which store has this cheapest right now" — including turning a whole recipe into the cheapest
+(or fewest-stores) shopping trip. The goal is simple: save students time, hassle, and money on
+groceries.
 
 ## Architecture
 
@@ -187,8 +187,8 @@ reads from Supabase directly; no local backend is needed.
 **Headed-browser session persistence.** The scraper opens a single Playwright/Chromium session
 and reuses it across every ingredient in the taxonomy, instead of opening a fresh page per
 query. Instacart sets session and location cookies on first load; reusing one browser context
-lets those persist so every subsequent search is scoped to the same store/location context
-without re-negotiating it each time.
+lets those persist so every subsequent search stays scoped to the same delivery location —
+in this case, the Riverside/UCR area — without re-negotiating it each time.
 
 **Upsert, not insert.** Each batch of scraped rows is upserted with `on_conflict="id"`, so
 re-running the scraper (or resuming after a partial run) updates existing product rows in place
@@ -199,8 +199,8 @@ blocking signals (CAPTCHA text, "unusual traffic," HTTP 4xx) and skips a query i
 rather than retrying immediately. To be transparent: it does **not** currently throttle or
 back off between ingredient searches — there's only a short pause between paginating a single
 store's product carousel. If you build on this, consider adding delays between queries; this
-project scrapes a modest, fixed taxonomy list for personal/educational use, not high-frequency
-or bulk collection.
+project scrapes a modest, fixed taxonomy list for a small number of stores near one campus, not
+high-frequency or bulk collection.
 
 **Recipe matching.** `Kaggle_Matcher` fuzzy-matches free-text recipe ingredients (e.g. "2 cups
 diced tomatoes, drained") against scraped product names using rapidfuzz, with unit/prep-word
