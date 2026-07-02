@@ -228,6 +228,5 @@ Shopwise was built by a four-person team:
 
 - **Jake Wang** — Team lead; Instacart scraping pipeline and Supabase data architecture
 - **James Chang** — iOS frontend (search, cart, UI)
-- **Nicholas Castellanos** — iOS frontend and backend integration (Supabase auth, recipe
-  matching, maps)
-- **Shengyang "Leo" Zhou** — Database contributions
+- **Nicholas Castellanos** — iOS frontend and backend integration (Supabase auth, recipe matching, maps)
+- **Shengyang "Leo" Zhou** — Database and backend integration (Supabase ingredient classification)
