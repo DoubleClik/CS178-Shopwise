@@ -5,7 +5,7 @@
 RecipesDataset.csv
 openapi_key.py
 .env
-/__pycache__
+__pycache__/
 classified_ingredients.csv
 /kroger_output
 .DS_Store

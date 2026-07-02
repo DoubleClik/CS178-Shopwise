@@ -4,7 +4,7 @@ scraper.py  —  Instacart pipeline scraper
 
 Architecture
 ------------
-  1. Load credentials from CS178-Shopwise/.env
+  1. Load credentials from Shopwise/.env
         SUPABASE_URL, SUPABASE_SERVICE_KEY
 
   2. Fetch all rows from the Supabase `taxonomy` table (column: `ingredient`)
