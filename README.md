@@ -27,7 +27,7 @@ without needing each store's own app.
 ```
 
 1. The `taxonomy` table holds the list of ingredient search terms that drive scraping.
-2. `PlayWright/scraper.py` opens one long-lived Instacart session and scrapes per-store prices
+2. `scraper/scraper.py` opens one long-lived Instacart session and scrapes per-store prices
    for every taxonomy term.
 3. Scraped results land in Supabase, keyed against `ingredients` — a curated set of bucket
    ingredient categories — so a search resolves against a fast, pre-classified set of products
@@ -38,6 +38,16 @@ without needing each store's own app.
    on every request.
 5. The iOS app talks to Supabase directly over REST (PostgREST + Supabase Auth) — no backend
    server in between.
+
+## Project structure
+
+```
+shopwise/
+├── scraper/          # Python: Instacart scraper (Playwright) -> Supabase
+├── Kaggle_Matcher/    # Python: offline recipe <-> product fuzzy matcher (see below)
+├── ios/               # iOS app (Swift/SwiftUI, Xcode project)
+└── package.json       # reserved for future JS/TS tooling; no JS source currently in the repo
+```
 
 ## Screenshots
 
@@ -147,7 +157,7 @@ unpopulated; the Map view falls back to a hardcoded list for those stores until 
 ### Running the scraper
 
 ```bash
-cd PlayWright
+cd scraper
 pip install -r requirements.txt
 playwright install chromium
 python scraper.py            # full run: every taxonomy ingredient
@@ -169,7 +179,7 @@ Safe to re-run — it skips recipes that already have matches.
 
 ### iOS app
 
-Open `SWFrontUI/ShopwiseFrontEndUI.xcodeproj` in Xcode and run on a simulator or device. The app
+Open `ios/ShopwiseFrontEndUI.xcodeproj` in Xcode and run on a simulator or device. The app
 reads from Supabase directly; no local backend is needed.
 
 ## How it works
@@ -211,3 +221,13 @@ round-trip to Supabase for either.
 - The scraper has no rate-limiting between queries (see above).
 - Kroger-family store locations in the Map view are hardcoded pending the `kroger_locations`
   table being populated.
+
+## Credits
+
+Shopwise was built by a four-person team:
+
+- **Jake Wang** — Team lead; Instacart scraping pipeline and Supabase data architecture
+- **James Chang** — iOS frontend (search, cart, UI)
+- **Nicholas Castellanos** — iOS frontend and backend integration (Supabase auth, recipe
+  matching, maps)
+- **Shengyang "Leo" Zhou** — Database contributions
